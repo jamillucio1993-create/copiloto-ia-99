@@ -1,0 +1,15 @@
+package br.com.copilotoia99
+import org.junit.Assert.*
+import org.junit.Test
+class OfferEvaluatorTest {
+    @Test fun calculatesTotalPickupEconomics() {
+        val e = OfferEvaluator.evaluate(30.0,12.0,30.0,4.95)
+        assertEquals(2.5,e.perKm,0.001)
+        assertEquals(60.0,e.perHour,0.001)
+    }
+    @Test fun mandatoryThresholdOverridesScore() {
+        val e = OfferEvaluator.evaluate(100.0,10.0,20.0,4.0)
+        assertTrue(e.verdict.startsWith("RUIM"))
+    }
+    @Test(expected=IllegalArgumentException::class) fun rejectsInvalidDistance() { OfferEvaluator.evaluate(20.0,0.0,15.0,4.9) }
+}

@@ -9,7 +9,7 @@ object OfferTextParser {
     private fun n(s: String) = s.replace(',', '.').toDoubleOrNull()
     fun parse(raw: String): ParsedOffer {
         val text = raw.replace('\u00a0', ' ')
-        val price = money.find(text)?.groupValues?.get(1)?.let(::n)
+        val price = money.findAll(text).mapNotNull { it.groupValues[1].let(::n) }.firstOrNull()
         // A card may contain pickup and trip segments such as "4 min (887 m)" and "6 min (2 km)".
         val pair = Regex("""([0-9]+(?:[.,][0-9]+)?)\s*(?:minutos|mins|min)\s*\(?\s*([0-9]+(?:[.,][0-9]+)?)\s*(km|m)\b""", RegexOption.IGNORE_CASE)
         val segments = pair.findAll(text).mapNotNull { match ->
@@ -19,8 +19,13 @@ object OfferTextParser {
         }.toList()
         val first = segments.getOrNull(0)
         val second = segments.getOrNull(1)
-        val rating = Regex("""\b([345][.,][0-9]{2})\s*[·•]\s*[0-9]+\s*corridas""", RegexOption.IGNORE_CASE)
-            .find(text)?.groupValues?.get(1)?.let(::n)
+        val rating = Regex("""(?:★|☆|⭐|nota|avaliação)?\\s*\\b([345][.,][0-9]{2})\\b\\s*(?:[·•\\s]*[0-9]+\\s*corridas)?""", RegexOption.IGNORE_CASE)
+            .findAll(text).mapNotNull { match ->
+                val value = n(match.groupValues[1]) ?: return@mapNotNull null
+                val context = text.substring((match.range.first - 16).coerceAtLeast(0),
+                    (match.range.last + 32).coerceAtMost(text.length)).lowercase(Locale.ROOT)
+                if ("corridas" in context || "★" in context || "⭐" in context || "nota" in context || "avalia" in context) value else null
+            }.firstOrNull()
         val complete = price != null && first != null && second != null && price > 0 && second.second > 0 && second.first > 0
         return ParsedOffer(price, first?.second, first?.first, second?.second, second?.first, rating, complete, text.take(280))
     }

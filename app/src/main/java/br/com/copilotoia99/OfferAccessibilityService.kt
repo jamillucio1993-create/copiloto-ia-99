@@ -3,6 +3,7 @@ package br.com.copilotoia99
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import com.google.mlkit.vision.text.Text
 import android.os.Build
 import android.os.SystemClock
 import android.os.Handler
@@ -118,9 +119,13 @@ class OfferAccessibilityService : AccessibilityService() {
                     }
                     recognizer.process(InputImage.fromBitmap(bitmap, 0))
                         .addOnSuccessListener { recognized ->
-                            if (!processOffer(recognized.textBlocks.flatMap { it.lines }.sortedWith(compareBy({ it.boundingBox?.top ?: Int.MAX_VALUE }, { it.boundingBox?.left ?: 0 })).joinToString("\n") { it.text }, "OCR")) {
-                                diagnostic("99 detectada • dados da oferta não identificados")
-                            }
+                            val cards = extractCardTexts(recognized)
+                            val valid = cards.filter { OfferTextParser.parse(it).complete }
+                            if (valid.size == 1) processOffer(valid.first(), "OCR por cartão")
+                            else if (valid.size > 1) {
+                                clearOffer()
+                                diagnostic("Múltiplas ofertas • selecione uma")
+                            } else diagnostic("99 detectada • leitura incompleta")
                         }
                         .addOnFailureListener { diagnostic("OCR não conseguiu ler a oferta") }
                         .addOnCompleteListener {
@@ -137,6 +142,28 @@ class OfferAccessibilityService : AccessibilityService() {
             screenshotBusy = false
             diagnostic("Não foi possível capturar a oferta")
         }
+    }
+
+    private fun extractCardTexts(recognized: Text): List<String> {
+        val lines = recognized.textBlocks.flatMap { it.lines }
+            .filter { it.boundingBox != null }
+            .sortedWith(compareBy({ it.boundingBox!!.top }, { it.boundingBox!!.left }))
+        val anchor = Regex("""R\$\s*\d+[.,]\d{2}""")
+        val fares = lines.filter {
+            anchor.containsMatchIn(it.text) && !it.text.contains("/km", true) &&
+                !it.text.contains("por embarque", true) && !it.text.contains("por km", true)
+        }
+        if (fares.isEmpty()) return emptyList()
+        if (fares.size == 1) return listOf(lines.joinToString("\n") { it.text })
+        val centers = fares.map { it.boundingBox!!.centerY() }.sorted()
+        val boundaries = centers.zipWithNext { a, b -> (a + b) / 2 }
+        val groups = MutableList(centers.size) { mutableListOf<Text.Line>() }
+        for (line in lines) {
+            val y = line.boundingBox!!.centerY()
+            val index = boundaries.indexOfFirst { y < it }.let { if (it < 0) groups.lastIndex else it }
+            groups[index].add(line)
+        }
+        return groups.map { group -> group.joinToString("\n") { it.text } }
     }
 
     private fun processOffer(raw: String, source: String): Boolean {

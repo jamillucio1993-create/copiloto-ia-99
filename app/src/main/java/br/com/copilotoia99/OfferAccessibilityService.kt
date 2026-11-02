@@ -18,6 +18,7 @@ import android.widget.TextView
 class OfferAccessibilityService : AccessibilityService() {
     private var lastFingerprint = ""
     private var lastPublishedAt = 0L
+    private var lastDiagnosticAt = 0L
     private var overlay: TextView? = null
     private var windowManager: WindowManager? = null
 
@@ -42,10 +43,17 @@ class OfferAccessibilityService : AccessibilityService() {
         collectText(root, text, 0)
         root.recycle()
         val raw = text.toString().trim()
-        if (raw.isBlank()) return
+        if (raw.isBlank()) {
+            diagnostic("99 detectada, mas sem texto acessível")
+            return
+        }
 
         val parsed = OfferTextParser.parse(raw)
-        if (!parsed.complete) return
+        if (!parsed.complete) {
+            val amounts = Regex("""R\\$\\s*[0-9]+(?:[.,][0-9]{2})?""").findAll(raw).count()
+            diagnostic("Tela 99 lida • ${raw.length} caracteres • ${amounts} valores • dados insuficientes para avaliar")
+            return
+        }
         val fingerprint = "${parsed.price}:${parsed.pickupKm}:${parsed.tripKm}:${parsed.pickupMinutes}:${parsed.tripMinutes}"
         val now = System.currentTimeMillis()
         if (fingerprint == lastFingerprint || now - lastPublishedAt < 1200) return
@@ -93,6 +101,14 @@ class OfferAccessibilityService : AccessibilityService() {
             collectText(child, out, depth + 1)
             child.recycle()
         }
+    }
+
+    private fun diagnostic(message: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastDiagnosticAt < 5000) return
+        lastDiagnosticAt = now
+        publish(message)
+        showOverlay("Copiloto IA 99 • " + message)
     }
 
     private fun publish(message: String) {

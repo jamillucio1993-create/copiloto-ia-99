@@ -314,9 +314,10 @@ class OfferAccessibilityService : AccessibilityService() {
                 val view = if (index < listOverlays.size) listOverlays[index] else {
                     val created = TextView(this).apply {
                         setTextColor(android.graphics.Color.WHITE)
-                        textSize = 14f
+                        textSize = 17f
+                        setTypeface(null, android.graphics.Typeface.BOLD)
                         gravity = Gravity.CENTER
-                        setPadding(20, 12, 20, 12)
+                        setPadding(24, 16, 24, 16)
                         maxLines = 3
                     }
                     val params = WindowManager.LayoutParams(
@@ -334,7 +335,7 @@ class OfferAccessibilityService : AccessibilityService() {
                     listOverlays.add(created)
                     created
                 }
-                view.text = item.first
+                if (view.text.toString() != item.first) view.text = item.first
                 view.setBackgroundColor(item.second)
                 view.visibility = android.view.View.VISIBLE
             }
@@ -464,10 +465,12 @@ class OfferAccessibilityService : AccessibilityService() {
             val view = TextView(this).apply {
                 setTextColor(android.graphics.Color.WHITE)
                 setBackgroundColor(0xE51C2732.toInt())
-                textSize = 14f
+                textSize = 18f
+                setTypeface(null, android.graphics.Typeface.BOLD)
                 gravity = Gravity.CENTER
-                setPadding(12, 8, 12, 8)
-                maxLines = 10
+                setPadding(24, 18, 24, 18)
+                maxLines = 7
+                minWidth = (resources.displayMetrics.widthPixels * 0.72f).toInt()
             }
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
@@ -488,7 +491,7 @@ class OfferAccessibilityService : AccessibilityService() {
         listOverlays.forEach { it.visibility = android.view.View.GONE }
         overlay?.apply {
             visibility = android.view.View.VISIBLE
-            text = message
+            if (text.toString() != message) text = message
             setBackgroundColor(when (verdict) {
                 "CONEXAO" -> 0xE51B557C.toInt()
                 "LISTA" -> 0xEE162A3D.toInt()

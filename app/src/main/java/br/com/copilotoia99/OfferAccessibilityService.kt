@@ -29,6 +29,7 @@ class OfferAccessibilityService : AccessibilityService() {
     private var lastDiagnosticAt = 0L
     private var lastScreenshotAt = 0L
     private var screenshotBusy = false
+    private var lastOfferSeenAt = 0L
     private var overlay: TextView? = null
     private var windowManager: WindowManager? = null
 
@@ -119,6 +120,7 @@ class OfferAccessibilityService : AccessibilityService() {
         if (fingerprint == lastFingerprint && now - lastPublishedAt < 8000L) return true
         lastFingerprint = fingerprint
         lastPublishedAt = now
+        lastOfferSeenAt = now
         val offer = OfferInput(
             parsed.price!!, parsed.pickupKm!!, parsed.tripKm!!,
             parsed.pickupMinutes!!, parsed.tripMinutes!!,
@@ -140,7 +142,7 @@ class OfferAccessibilityService : AccessibilityService() {
                 evaluation.verdict, evaluation.score, evaluation.perKm, evaluation.perHour,
                 if (parsed.rating == null) " • nota não lida" else "")
             publish("$source: $summary")
-            showOverlay(summary)
+            showOverlay(summary, evaluation.verdict)
             Thread {
                 try { OfferStore(applicationContext).use { it.add(offer, evaluation) } }
                 catch (_: Exception) {}
@@ -164,7 +166,7 @@ class OfferAccessibilityService : AccessibilityService() {
 
     private fun diagnostic(message: String) {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastDiagnosticAt < 5000L) return
+        if (now - lastDiagnosticAt < 5000L || now - lastOfferSeenAt < 10000L) return
         lastDiagnosticAt = now
         publish(message)
         showOverlay("Copiloto IA 99 • $message")
@@ -176,7 +178,7 @@ class OfferAccessibilityService : AccessibilityService() {
             .putLong("updated_at", System.currentTimeMillis()).apply()
     }
 
-    private fun showOverlay(message: String) {
+    private fun showOverlay(message: String, verdict: String? = null) {
         if (!Settings.canDrawOverlays(this)) return
         if (windowManager == null) windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         if (overlay == null) {
@@ -202,7 +204,15 @@ class OfferAccessibilityService : AccessibilityService() {
             try { windowManager?.addView(view, params); overlay = view }
             catch (_: Exception) {}
         }
-        overlay?.text = message
+        overlay?.apply {
+            text = message
+            setBackgroundColor(when (verdict) {
+                "EXCELENTE", "BOA" -> 0xE51B873D.toInt()
+                "REGULAR" -> 0xE5C58A12.toInt()
+                "RUIM" -> 0xE5B4232C.toInt()
+                else -> 0xE51C2732.toInt()
+            })
+        }
     }
 
     override fun onInterrupt() { publish("Acessibilidade interrompida") }

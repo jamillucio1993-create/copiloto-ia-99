@@ -224,7 +224,10 @@ class OfferAccessibilityService : AccessibilityService() {
             val group = lines.filter { it.boundingBox!!.centerY() > previousBottom &&
                 it.boundingBox!!.centerY() <= bottom }
             previousBottom = bottom
-            val text = group.joinToString("\\n") { it.text }
+            val text = group.filterNot { accept.containsMatchIn(it.text) ||
+                (it.text.trim().matches(Regex("""R\\$\\s*\\d+[.,]\\d{2}""")) &&
+                 it.boundingBox!!.centerY() > bottom - 90) }
+                .joinToString("\n") { it.text }
             // One accept button and exactly one independently parsed offer.
             // Never infer missing pickup or destination data from other cards.
             groups.add(text)

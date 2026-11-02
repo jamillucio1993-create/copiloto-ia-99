@@ -179,6 +179,7 @@ class OfferAccessibilityService : AccessibilityService() {
             diagnostic("Captura por acessibilidade indisponível neste Android")
             return
         }
+        mainHandler.postDelayed({
         try {
             takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
                 override fun onSuccess(result: ScreenshotResult) {
@@ -237,6 +238,7 @@ class OfferAccessibilityService : AccessibilityService() {
             consecutiveOcrFailures++
             diagnostic("Falha ao iniciar captura • tentativas: $consecutiveOcrFailures")
         }
+        }, 100L)
     }
 
     private fun extractCardTexts(recognized: Text): List<String> {

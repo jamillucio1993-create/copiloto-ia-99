@@ -175,6 +175,7 @@ class OfferAccessibilityService : AccessibilityService() {
         }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             screenshotBusy = false
+            restoreOverlays()
             diagnostic("Captura por acessibilidade indisponível neste Android")
             return
         }

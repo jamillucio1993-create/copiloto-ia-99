@@ -49,15 +49,53 @@ class MainActivity : Activity() {
     }
     private fun input(root: LinearLayout, label: String, initial: String, numeric: Boolean=true): EditText {
         root.addView(text(label,14f,true))
-        return EditText(this).apply {
-            setText(initial); setSingleLine(true); textSize=18f; minHeight=dp(54)
-            setPadding(dp(14),dp(8),dp(14),dp(8))
+        val field=EditText(this).apply {
+            setText(initial); setSingleLine(true); textSize=20f; minHeight=dp(54)
+            setPadding(dp(10),dp(8),dp(10),dp(8))
             setTextColor(ink); setHintTextColor(muted); background=rounded(Color.WHITE,Color.rgb(205,215,225))
-            if(numeric) inputType=InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-            else inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            inputType=if(numeric) InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                      else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             contentDescription=label
-            root.addView(this)
         }
+        if(!numeric) {
+            root.addView(field)
+            return field
+        }
+        val step=when {
+            label.contains("Nota",true) -> 0.05
+            label.contains("tempo",true) || label.contains("min)",true) -> 1.0
+            label.contains("distância",true) || label.contains("(km)",true) -> 0.5
+            label.contains("R$/km",true) -> 0.1
+            label.contains("R$/hora",true) -> 1.0
+            else -> 0.5
+        }
+        val maximum=if(label.contains("Nota",true)) 5.0 else 10000.0
+        val decimals=if(step==0.05 || step==0.1) 2 else if(step==0.5) 1 else 0
+        val line=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL }
+        field.apply {
+            isFocusable=false; isFocusableInTouchMode=false; isCursorVisible=false
+            gravity=Gravity.CENTER; setTextIsSelectable(false)
+        }
+        fun adjust(direction: Int) {
+            val current=field.text.toString().replace(',','.').toDoubleOrNull() ?: 0.0
+            val next=((current+direction*step).coerceIn(0.0,maximum)/step).let {
+                kotlin.math.round(it)*step
+            }.coerceIn(0.0,maximum)
+            field.setText(String.format(pt,"%.${decimals}f",next))
+        }
+        fun control(symbol: String, direction: Int): Button = Button(this).apply {
+            text=symbol; textSize=26f; setTextColor(Color.WHITE); typeface=Typeface.DEFAULT_BOLD
+            background=rounded(navy); minHeight=dp(54); minWidth=dp(64)
+            contentDescription=(if(direction>0) "Aumentar " else "Diminuir ")+label
+            setOnClickListener { adjust(direction) }
+        }
+        line.addView(control("−",-1),LinearLayout.LayoutParams(dp(64),dp(56)))
+        line.addView(field,LinearLayout.LayoutParams(0,dp(56),1f).apply {
+            leftMargin=dp(8); rightMargin=dp(8)
+        })
+        line.addView(control("+",1),LinearLayout.LayoutParams(dp(64),dp(56)))
+        root.addView(line)
+        return field
     }
     private fun parse(e: EditText): Double = e.text.toString().trim().replace(',','.').toDouble()
     private fun button(root: LinearLayout, title: String, action: ()->Unit) {

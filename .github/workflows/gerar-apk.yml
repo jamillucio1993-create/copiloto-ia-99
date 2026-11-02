@@ -2,6 +2,8 @@ name: Gerar APK Copiloto IA 99
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
 permissions:
   contents: read

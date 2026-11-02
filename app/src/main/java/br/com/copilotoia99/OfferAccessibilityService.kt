@@ -96,6 +96,7 @@ class OfferAccessibilityService : AccessibilityService() {
     private var screenshotBusy = false
     private var lastOfferSeenAt = 0L
     private var overlay: TextView? = null
+    private val listOverlays = mutableListOf<TextView>()
     private var overlayVisibleUntil = 0L
     private var windowManager: WindowManager? = null
 
@@ -224,7 +225,7 @@ class OfferAccessibilityService : AccessibilityService() {
     }
 
     private fun showListOffers(cards: List<String>) {
-        if (cards.isEmpty()) return
+        if (cards.isEmpty() || !Settings.canDrawOverlays(this)) return
         val prefs = getSharedPreferences("driver_limits", MODE_PRIVATE)
         val limits = DriverLimits(
             prefs.getFloat("km", 1.8f).toDouble(),
@@ -234,33 +235,75 @@ class OfferAccessibilityService : AccessibilityService() {
             prefs.getFloat("pickupKm", 8f).toDouble(),
             prefs.getFloat("pickupMin", 15f).toDouble()
         )
-        val summaries = cards.mapIndexed { index, card ->
+        val items = cards.take(3).mapIndexed { index, card ->
             val parsed = OfferTextParser.parse(card)
-            val prefix = "CORRIDA ${index + 1}"
             if (!parsed.complete) {
-                val price = parsed.price?.let { String.format(Locale("pt", "BR"), "R$ %.2f", it) } ?: "valor não lido"
-                "$prefix • $price • dados insuficientes"
+                val fare = parsed.price?.let { String.format(Locale("pt", "BR"), "R$ %.2f", it) } ?: "valor indisponível"
+                Pair("CORRIDA ${index + 1} • $fare\nDados insuficientes para avaliar", 0xE5C58A12.toInt())
             } else {
                 try {
-                    val offer = OfferInput(
-                        parsed.price!!, parsed.pickupKm!!, parsed.tripKm!!,
-                        parsed.pickupMinutes!!, parsed.tripMinutes!!,
-                        parsed.rating ?: 0.0, "Desconhecida"
-                    )
-                    val evaluation = OfferEvaluator.evaluate(offer, limits)
-                    String.format(Locale("pt", "BR"),
-                        "%s • R$ %.2f • %s\n%.2f/km • R$ %.2f/h",
-                        prefix, parsed.price, evaluation.verdict,
-                        evaluation.perKm, evaluation.perHour)
-                } catch (_: Exception) { "$prefix • erro na avaliação" }
+                    val offer = OfferInput(parsed.price!!, parsed.pickupKm!!, parsed.tripKm!!,
+                        parsed.pickupMinutes!!, parsed.tripMinutes!!, parsed.rating ?: 0.0, "Desconhecida")
+                    val ev = OfferEvaluator.evaluate(offer, limits)
+                    val text = String.format(Locale("pt", "BR"),
+                        "CORRIDA %d • R$ %.2f • %s\nR$ %.2f/km • R$ %.2f/h",
+                        index + 1, parsed.price, ev.verdict, ev.perKm, ev.perHour)
+                    val color = when (ev.verdict) {
+                        "EXCELENTE", "BOA" -> 0xE51B873D.toInt()
+                        "REGULAR" -> 0xE5C58A12.toInt()
+                        else -> 0xE5B4232C.toInt()
+                    }
+                    Pair(text, color)
+                } catch (_: Exception) {
+                    Pair("CORRIDA ${index + 1}\nNão foi possível avaliar", 0xE5C58A12.toInt())
+                }
             }
         }
-        if (summaries.isEmpty()) return
-        val output = summaries.joinToString("\n────────────\n")
-        if (output == lastRawFingerprint && overlay?.visibility == android.view.View.VISIBLE) return
-        lastRawFingerprint = output
-        showOverlay(output, "LISTA")
-        publish("99 detectada • ${cards.size} cartões • até 3 avaliações exibidas")
+        val fingerprint = items.joinToString("|") { it.first }
+        if (fingerprint == lastRawFingerprint && listOverlays.size == items.size &&
+            listOverlays.all { it.visibility == android.view.View.VISIBLE }) return
+        lastRawFingerprint = fingerprint
+        if (windowManager == null) windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        overlay?.visibility = android.view.View.GONE
+        try {
+            while (listOverlays.size > items.size) {
+                val removed = listOverlays.removeAt(listOverlays.lastIndex)
+                windowManager?.removeView(removed)
+            }
+            items.forEachIndexed { index, item ->
+                val view = if (index < listOverlays.size) listOverlays[index] else {
+                    val created = TextView(this).apply {
+                        setTextColor(android.graphics.Color.WHITE)
+                        textSize = 14f
+                        gravity = Gravity.CENTER
+                        setPadding(20, 12, 20, 12)
+                        maxLines = 3
+                    }
+                    val params = WindowManager.LayoutParams(
+                        (resources.displayMetrics.widthPixels * 0.83f).toInt(),
+                        WindowManager.LayoutParams.WRAP_CONTENT,
+                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                        PixelFormat.TRANSLUCENT
+                    ).apply {
+                        gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                        y = (resources.displayMetrics.density * (40 + index * 84)).toInt()
+                    }
+                    windowManager?.addView(created, params)
+                    listOverlays.add(created)
+                    created
+                }
+                view.text = item.first
+                view.setBackgroundColor(item.second)
+                view.visibility = android.view.View.VISIBLE
+            }
+            publish("99 detectada • ${items.size} avaliações independentes na lista")
+            mainHandler.removeCallbacks(clearExpired)
+            mainHandler.postDelayed(clearExpired, 8000L)
+        } catch (e: Exception) {
+            publish("Falha ao exibir lista: ${e.javaClass.simpleName}")
+        }
     }
 
     private fun processOffer(raw: String, source: String): Boolean {
@@ -362,6 +405,7 @@ class OfferAccessibilityService : AccessibilityService() {
 
     private fun hideOverlay() {
         overlay?.visibility = android.view.View.GONE
+        listOverlays.forEach { it.visibility = android.view.View.GONE }
         lastRawFingerprint = ""
         overlayVisibleUntil = 0L
     }
@@ -397,6 +441,7 @@ class OfferAccessibilityService : AccessibilityService() {
             catch (e: Exception) { publish("Falha ao abrir janela: ${e.javaClass.simpleName}") }
         }
         if (overlay == null) return
+        listOverlays.forEach { it.visibility = android.view.View.GONE }
         overlay?.apply {
             visibility = android.view.View.VISIBLE
             text = message
@@ -425,6 +470,8 @@ class OfferAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         getSharedPreferences("accessibility_status", MODE_PRIVATE).edit().putBoolean("service_connected", false).apply()
         try { overlay?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
+        listOverlays.forEach { try { windowManager?.removeView(it) } catch (_: Exception) {} }
+        listOverlays.clear()
         overlay = null
         mainHandler.removeCallbacks(clearExpired)
         mainHandler.removeCallbacks(poller)

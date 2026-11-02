@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Copiloto IA 99</string>
+    <string name="accessibility_service_description">Lê o texto visível de ofertas no aplicativo 99 para calcular indicadores da corrida. Não toca na tela, não aceita nem recusa corridas e não grava vídeo.</string>
+</resources>

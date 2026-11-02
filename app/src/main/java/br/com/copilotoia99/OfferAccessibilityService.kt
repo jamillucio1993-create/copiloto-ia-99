@@ -203,6 +203,8 @@ class OfferAccessibilityService : AccessibilityService() {
                         diagnostic("Falha ao converter imagem da oferta")
                         return
                     }
+                    // Screenshot pixels are already copied; restore the overlay before asynchronous OCR.
+                    restoreOverlays()
                     recognizer.process(InputImage.fromBitmap(bitmap, 0))
                         .addOnSuccessListener { recognized ->
                             if (capturedGeneration != screenGeneration || capturedSequence != captureSequence || !is99Foreground) return@addOnSuccessListener

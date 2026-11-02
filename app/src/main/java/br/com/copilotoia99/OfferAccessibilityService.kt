@@ -40,9 +40,12 @@ class OfferAccessibilityService : AccessibilityService() {
                 try { collectText(root, out, 0) } finally { root.recycle() }
                 if (pkg.contains("99") || pkg.contains("didi")) {
                     if (out.contains("buscando viagens", true) || out.contains("procurando viagens", true)) clearOffer()
-                    else if (!processOffer(out.toString(), "acessibilidade") && pendingFingerprint == null) requestScreenshot()
+                    else if (!processOffer(out.toString(), "acessibilidade") && (pendingFingerprint == null || SystemClock.elapsedRealtime() - pendingAt > 1200L)) requestScreenshot()
                     mainHandler.postDelayed(this, 700L)
-                } else clearOffer()
+                } else {
+                    clearOffer()
+                    mainHandler.postDelayed(this, 1500L)
+                }
             } else if (SystemClock.elapsedRealtime() - last99EventAt < 10000L) {
                 // A transient null window must not permanently stop monitoring.
                 mainHandler.postDelayed(this, 700L)
@@ -78,8 +81,9 @@ class OfferAccessibilityService : AccessibilityService() {
         val pkg = event.packageName?.toString()?.lowercase(Locale.ROOT) ?: return
         if (pkg == packageName.lowercase(Locale.ROOT)) return
         if (!pkg.contains("99") && !pkg.contains("didi")) {
-            mainHandler.removeCallbacks(poller)
             clearOffer()
+            mainHandler.removeCallbacks(poller)
+            mainHandler.postDelayed(poller, 1500L)
             return
         }
         last99EventAt = SystemClock.elapsedRealtime()
@@ -106,7 +110,7 @@ class OfferAccessibilityService : AccessibilityService() {
         if (raw.contains("buscando viagens", true) || raw.contains("procurando viagens", true)) { clearOffer(); return }
         if (raw.isNotBlank() && processOffer(raw, "acessibilidade")) return
         // A complete offer awaiting its second reading is not an OCR failure.
-        if (pendingFingerprint == null) requestScreenshot()
+        if (pendingFingerprint == null || SystemClock.elapsedRealtime() - pendingAt > 1200L) requestScreenshot()
     }
 
     private fun requestScreenshot() {
@@ -194,12 +198,16 @@ class OfferAccessibilityService : AccessibilityService() {
 
     private fun processOffer(raw: String, source: String): Boolean {
         val parsed = OfferTextParser.parse(raw)
-        if (!parsed.complete) return false
+        if (!parsed.complete) {
+            if (raw.contains("R$", true)) diagnostic("99 detectada • oferta incompleta para avaliação")
+            return false
+        }
         val fingerprint = "${parsed.price}:${parsed.pickupKm}:${parsed.tripKm}:${parsed.pickupMinutes}:${parsed.tripMinutes}:${parsed.rating}"
         val now = SystemClock.elapsedRealtime()
         if (fingerprint != pendingFingerprint || now - pendingAt > 3500L) {
             pendingFingerprint = fingerprint
             pendingAt = now
+            publish("Oferta identificada • aguardando confirmação")
             return false
         }
         if (now - pendingAt < 250L) return false
@@ -240,7 +248,7 @@ class OfferAccessibilityService : AccessibilityService() {
                 try { OfferStore(applicationContext).use { it.add(offer, evaluation) } }
                 catch (_: Exception) {}
             }.start()
-            EvolutionRecorder.recordAsync(this, "accessibility_offer_detected")
+            EvolutionRecorder.recordAsync(this, "offer_detected")
         } catch (_: Exception) { diagnostic("Oferta lida, mas avaliação falhou") }
         return true
     }

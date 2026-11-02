@@ -46,6 +46,9 @@ class OfferAccessibilityService : AccessibilityService() {
             } else if (SystemClock.elapsedRealtime() - last99EventAt < 10000L) {
                 // A transient null window must not permanently stop monitoring.
                 mainHandler.postDelayed(this, 700L)
+            } else {
+                // Continue checking for the 99 app even if no event arrived yet.
+                mainHandler.postDelayed(this, 1500L)
             }
         }
     }
@@ -66,6 +69,8 @@ class OfferAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         diagnostic("Acessibilidade ativa • aguardando oferta")
+        mainHandler.removeCallbacks(poller)
+        mainHandler.postDelayed(poller, 700L)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -279,7 +284,10 @@ class OfferAccessibilityService : AccessibilityService() {
     }
 
     private fun showOverlay(message: String, verdict: String? = null) {
-        if (!Settings.canDrawOverlays(this)) return
+        if (!Settings.canDrawOverlays(this)) {
+            publish("Oferta detectada, mas permissão de janela flutuante bloqueada")
+            return
+        }
         if (windowManager == null) windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         if (overlay == null) {
             val view = TextView(this).apply {
@@ -303,7 +311,7 @@ class OfferAccessibilityService : AccessibilityService() {
                 y = (resources.displayMetrics.density * 38).toInt()
             }
             try { windowManager?.addView(view, params); overlay = view }
-            catch (_: Exception) {}
+            catch (e: Exception) { publish("Falha ao abrir janela: ${e.javaClass.simpleName}") }
         }
         overlay?.apply {
             visibility = android.view.View.VISIBLE

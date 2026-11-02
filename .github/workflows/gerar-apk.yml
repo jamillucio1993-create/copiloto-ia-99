@@ -6,12 +6,11 @@ on:
     branches: [ main ]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Baixar projeto
         uses: actions/checkout@v4
@@ -32,12 +31,47 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Compilar APK
+      - name: Compilar APK de teste
         run: gradle :app:assembleDebug --stacktrace
 
-      - name: Disponibilizar APK
+      - name: Disponibilizar APK de teste
         uses: actions/upload-artifact@v4
         with:
-          name: Copiloto-IA-99-APK
+          name: Copiloto-IA-99-TESTE
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      # Production releases require a stable signing key stored in GitHub Actions secrets.
+      # Never generate a new release key on each workflow run.
+      - name: Verificar assinatura de produção
+        id: signing
+        env:
+          KEYSTORE_B64: ${{ secrets.COPILOTO_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.COPILOTO_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.COPILOTO_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.COPILOTO_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/copiloto-release.jks"
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Release signing not configured: only test APK will be produced."
+          fi
+
+      - name: Compilar APK assinado para atualizações
+        if: steps.signing.outputs.ready == 'true'
+        env:
+          COPILOTO_KEYSTORE_PATH: ${{ runner.temp }}/copiloto-release.jks
+          COPILOTO_KEYSTORE_PASSWORD: ${{ secrets.COPILOTO_KEYSTORE_PASSWORD }}
+          COPILOTO_KEY_ALIAS: ${{ secrets.COPILOTO_KEY_ALIAS }}
+          COPILOTO_KEY_PASSWORD: ${{ secrets.COPILOTO_KEY_PASSWORD }}
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Publicar APK assinado em Releases
+        if: steps.signing.outputs.ready == 'true' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk "Copiloto-IA-99-v2.0.${GITHUB_RUN_NUMBER}.apk"
+          gh release create "v2.0.${GITHUB_RUN_NUMBER}" "Copiloto-IA-99-v2.0.${GITHUB_RUN_NUMBER}.apk" --title "Copiloto IA 99 v2.0.${GITHUB_RUN_NUMBER}" --notes "Atualização assinada do Copiloto IA 99. Instale sobre uma versão com a mesma assinatura."

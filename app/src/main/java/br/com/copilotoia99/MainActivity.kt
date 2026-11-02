@@ -174,7 +174,10 @@ class MainActivity : Activity() {
         accessibilityCard.addView(text("Recomendado • Sem gravação contínua. O Android permite que o Copiloto leia o texto visível de ofertas compatíveis no app 99. Você continua no controle: ele não aceita nem recusa corridas.",15f))
         val accessibilityStatus=text(if(isAccessibilityServiceEnabled()) "Acessibilidade: ativada" else "Acessibilidade: desativada",14f,true)
         accessibilityCard.addView(accessibilityStatus)
-        button(accessibilityCard,"PERMITIR JANELA FLUTUANTE") {\n            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))\n        }\n        button(accessibilityCard,"ATIVAR AUTOMAÇÃO NO ANDROID") {
+        button(accessibilityCard,"PERMITIR JANELA FLUTUANTE") {
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
+        }
+        button(accessibilityCard,"ATIVAR AUTOMAÇÃO NO ANDROID") {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
         button(accessibilityCard,"VERIFICAR STATUS") {

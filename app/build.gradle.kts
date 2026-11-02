@@ -9,8 +9,8 @@ android {
         applicationId = "br.com.copilotoia99"
         minSdk = 31
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.4.0-interface"
+        versionCode = 8
+        versionName = "1.5.0-navigation"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

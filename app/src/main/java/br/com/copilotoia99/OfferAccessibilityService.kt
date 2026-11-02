@@ -40,9 +40,12 @@ class OfferAccessibilityService : AccessibilityService() {
                 try { collectText(root, out, 0) } finally { root.recycle() }
                 if (pkg.contains("99") || pkg.contains("didi")) {
                     if (out.contains("buscando viagens", true) || out.contains("procurando viagens", true)) clearOffer()
-                    else if (!processOffer(out.toString(), "acessibilidade")) requestScreenshot()
+                    else if (!processOffer(out.toString(), "acessibilidade") && pendingFingerprint == null) requestScreenshot()
                     mainHandler.postDelayed(this, 700L)
                 } else clearOffer()
+            } else if (SystemClock.elapsedRealtime() - last99EventAt < 10000L) {
+                // A transient null window must not permanently stop monitoring.
+                mainHandler.postDelayed(this, 700L)
             }
         }
     }
@@ -96,7 +99,8 @@ class OfferAccessibilityService : AccessibilityService() {
         val raw = out.toString()
         if (raw.contains("buscando viagens", true) || raw.contains("procurando viagens", true)) { clearOffer(); return }
         if (raw.isNotBlank() && processOffer(raw, "acessibilidade")) return
-        requestScreenshot()
+        // A complete offer awaiting its second reading is not an OCR failure.
+        if (pendingFingerprint == null) requestScreenshot()
     }
 
     private fun requestScreenshot() {

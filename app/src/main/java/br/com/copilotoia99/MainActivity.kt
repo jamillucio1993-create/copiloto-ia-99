@@ -275,6 +275,7 @@ class MainActivity : Activity() {
         button(homePanel,"🧮  ANALISAR UMA CORRIDA") { showSections(4) }
         button(homePanel,"📊  MEU HISTÓRICO") { showSections(7) }
         button(homePanel,"⚙️  CONFIGURAÇÕES E FERRAMENTAS") { showSections(0,1,5,6,8) }
+        button(homePanel,"🔄  VERIFICAR ATUALIZAÇÕES") { checkForUpdates() }
         root.addView(homePanel,3)
         sections.forEach { section ->
             section.visibility=View.GONE
@@ -293,6 +294,45 @@ class MainActivity : Activity() {
         sections.forEach { it.visibility=View.GONE }
         homePanel.visibility=View.VISIBLE
         scroll.post { scroll.smoothScrollTo(0,0) }
+    }
+
+    private fun checkForUpdates() {
+        android.widget.Toast.makeText(this,"Consultando versões publicadas...",android.widget.Toast.LENGTH_SHORT).show()
+        Thread {
+            val message=try {
+                val connection=(java.net.URL("https://api.github.com/repos/jamillucio1993-create/copiloto-ia-99/releases/latest").openConnection() as java.net.HttpURLConnection)
+                connection.connectTimeout=7000
+                connection.readTimeout=7000
+                connection.setRequestProperty("Accept","application/vnd.github+json")
+                connection.setRequestProperty("User-Agent","Copiloto-IA-99")
+                try {
+                    if(connection.responseCode==404) "Ainda não existe uma versão publicada em Releases. Consulte o GitHub Actions para compilações de teste."
+                    else if(connection.responseCode!=200) "Não foi possível consultar atualizações (HTTP ${connection.responseCode})."
+                    else {
+                        val json=org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                        val tag=json.optString("tag_name","")
+                        val current=packageManager.getPackageInfo(packageName,0).versionName ?: "desconhecida"
+                        val currentCode=if(android.os.Build.VERSION.SDK_INT>=28) packageManager.getPackageInfo(packageName,0).longVersionCode else 0L
+                        val latestCode=Regex("""(?:^|[^0-9])(\\d+)$""").find(tag)?.groupValues?.get(1)?.toLongOrNull()
+                        val newer=latestCode!=null && latestCode>currentCode
+                        val url=json.optString("html_url","")
+                        val description="Instalada: $current • Publicada: $tag"
+                        if(newer) "Nova versão disponível!\\n$description\\nAbra a página oficial para baixar."
+                        else if(latestCode==null) "Versão publicada encontrada.\\n$description\\nConfira manualmente se é mais recente."
+                        else "Você já está nesta versão ou em uma mais recente.\\n$description"
+                    }
+                } finally { connection.disconnect() }
+            } catch (_: Exception) { "Sem conexão ou falha ao consultar o GitHub. Tente novamente mais tarde." }
+            runOnUiThread {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Atualizações do Copiloto IA 99")
+                    .setMessage(message)
+                    .setNegativeButton("Fechar",null)
+                    .setPositiveButton("Abrir GitHub") { _,_ ->
+                        startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/jamillucio1993-create/copiloto-ia-99/releases")))
+                    }.show()
+            }
+        }.start()
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {

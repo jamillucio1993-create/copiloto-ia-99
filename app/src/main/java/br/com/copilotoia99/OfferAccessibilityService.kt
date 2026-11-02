@@ -58,13 +58,18 @@ class OfferAccessibilityService : AccessibilityService() {
 
     private var lastReadStartedAt = 0L
     private var lastRawFingerprint = ""
+    private var screenGeneration = 0L
+    private var lastAccessibleText = ""
+    private var lastAccessibleAt = 0L
+    private var lastOcrText = ""
+    private var lastOcrAt = 0L
     private val scanOnChange = Runnable { scanActiveWindow() }
     private fun scanActiveWindow() {
         val root = rootInActiveWindow ?: return
         val pkg = root.packageName?.toString()?.lowercase(Locale.ROOT) ?: ""
         if (!pkg.contains("99") && !pkg.contains("didi")) {
             root.recycle()
-            on99Background()
+            if (SystemClock.elapsedRealtime() - last99EventAt > 1800L) on99Background()
             return
         }
         val out = StringBuilder()
@@ -76,7 +81,13 @@ class OfferAccessibilityService : AccessibilityService() {
             clearOffer()
             return
         }
+        val now = SystemClock.elapsedRealtime()
+        if (raw == lastAccessibleText && now - lastAccessibleAt < 1600L) return
+        lastAccessibleText = raw
+        lastAccessibleAt = now
         if (raw.isBlank()) { requestScreenshot(); return }
+        val fareCount = Regex("""R\$\s*\d+[.,]\d{2}""").findAll(raw).count()
+        if (fareCount > 1) { requestScreenshot(); return }
         if (!processOffer(raw, "acessibilidade")) requestScreenshot()
     }
     private val poller = object : Runnable {
@@ -113,10 +124,8 @@ class OfferAccessibilityService : AccessibilityService() {
         val pkg = event.packageName?.toString()?.lowercase(Locale.ROOT) ?: return
         if (pkg == packageName.lowercase(Locale.ROOT)) return
         if (!pkg.contains("99") && !pkg.contains("didi")) {
-            on99Background()
-            clearOffer()
-            mainHandler.removeCallbacks(poller)
-            mainHandler.postDelayed(poller, 1500L)
+            mainHandler.removeCallbacks(scanOnChange)
+            mainHandler.postDelayed(scanOnChange, 200L)
             return
         }
         mark99Detected(pkg)
@@ -133,6 +142,7 @@ class OfferAccessibilityService : AccessibilityService() {
             )) return
 
         lastReadStartedAt = SystemClock.elapsedRealtime()
+        screenGeneration++
         mainHandler.removeCallbacks(scanOnChange)
         mainHandler.postDelayed(scanOnChange, 90L)
     }
@@ -143,6 +153,7 @@ class OfferAccessibilityService : AccessibilityService() {
         lastReadStartedAt = now
         lastScreenshotAt = now
         screenshotBusy = true
+        val capturedGeneration = screenGeneration
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             screenshotBusy = false
             diagnostic("Captura por acessibilidade indisponível neste Android")
@@ -163,6 +174,11 @@ class OfferAccessibilityService : AccessibilityService() {
                     }
                     recognizer.process(InputImage.fromBitmap(bitmap, 0))
                         .addOnSuccessListener { recognized ->
+                            if (capturedGeneration != screenGeneration || !is99Foreground) return@addOnSuccessListener
+                            val ocrNow = SystemClock.elapsedRealtime()
+                            if (recognized.text == lastOcrText && ocrNow - lastOcrAt < 1200L) return@addOnSuccessListener
+                            lastOcrText = recognized.text
+                            lastOcrAt = ocrNow
                             val cards = extractCardTexts(recognized)
                             val valid = cards.filter { OfferTextParser.parse(it).complete }
                             if (cards.size > 1) {
@@ -369,6 +385,9 @@ class OfferAccessibilityService : AccessibilityService() {
     }
 
     private fun clearOffer() {
+        screenGeneration++
+        lastAccessibleText = ""
+        hideOverlay()
         lastFingerprint = ""
         lastRawFingerprint = ""
         pendingFingerprint = null

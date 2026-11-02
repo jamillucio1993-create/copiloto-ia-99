@@ -351,6 +351,57 @@ class MainActivity : Activity() {
         }
         homePanel.addView(text("O QUE VOCÊ DESEJA FAZER?",17f,true).apply { setTextColor(navy) })
         homePanel.addView(text("Acesse rapidamente as funções principais. As ferramentas avançadas ficam em Configurações.",14f))
+        val dailyPrefs=getSharedPreferences("daily_copilot",Context.MODE_PRIVATE)
+        val dailyStatus=text(dailyGoalStatus(),14f,true)
+        homePanel.addView(dailyStatus)
+        button(homePanel,"🚗  LIGAR COPILOTO-A54") {
+            val goalInput=EditText(this).apply {
+                inputType=InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                setSingleLine(true)
+                hint="Ex.: 300,00"
+                setText(dailyPrefs.getFloat("target_reais",0f).takeIf { it>0f }?.let { String.format(pt,"%.2f",it) } ?: "")
+                setPadding(dp(20),dp(18),dp(20),dp(18))
+            }
+            val dialog=android.app.AlertDialog.Builder(this)
+                .setTitle("Quanto pretende faturar hoje?")
+                .setMessage("Informe sua meta de faturamento bruto do dia em reais. A meta será salva somente no celular. A leitura automática depende da acessibilidade ativa.")
+                .setView(goalInput)
+                .setNegativeButton("Cancelar",null)
+                .setPositiveButton("LIGAR",null)
+                .create()
+            dialog.setOnShowListener {
+                dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val value=goalInput.text.toString().trim().replace(',','.').toDoubleOrNull()
+                    if(value==null || !value.isFinite() || value<=0.0 || value>100000.0) {
+                        goalInput.error="Informe uma meta válida entre R$ 0,01 e R$ 100.000"
+                    } else {
+                        val today=java.text.SimpleDateFormat("yyyy-MM-dd",pt).format(java.util.Date())
+                        dailyPrefs.edit().putString("day",today).putFloat("target_reais",value.toFloat()).putBoolean("enabled",true).apply()
+                        dailyStatus.text=dailyGoalStatus()
+                        dialog.dismiss()
+                        if(!isAccessibilityServiceEnabled()) {
+                            android.app.AlertDialog.Builder(this)
+                                .setTitle("Meta salva • ativar leitura")
+                                .setMessage("Sua meta foi salva. Para analisar as ofertas automaticamente, ative o serviço de acessibilidade Copiloto IA 99 nas configurações do Android.")
+                                .setPositiveButton("ABRIR ACESSIBILIDADE") { _, _ -> startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                                .setNegativeButton("Depois",null).show()
+                        } else if(!Settings.canDrawOverlays(this)) {
+                            android.app.AlertDialog.Builder(this)
+                                .setTitle("Meta salva • liberar janela")
+                                .setMessage("Autorize a janela flutuante para exibir avaliações das ofertas sobre a 99.")
+                                .setPositiveButton("ABRIR PERMISSÃO") { _, _ -> startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName"))) }
+                                .setNegativeButton("Depois",null).show()
+                        } else Toast.makeText(this,"Meta diária salva. Leitura automática disponível quando a 99 estiver aberta.",Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            dialog.show()
+        }
+        button(homePanel,"⏹  DESLIGAR COPILOTO-A54") {
+            dailyPrefs.edit().putBoolean("enabled",false).apply()
+            dailyStatus.text=dailyGoalStatus()
+            Toast.makeText(this,"Meta diária pausada. O serviço de acessibilidade deve ser desligado separadamente nas configurações do Android.",Toast.LENGTH_LONG).show()
+        }
         button(homePanel,"🤖  ASSISTENTE AUTOMÁTICO") { showSections(2) }
         button(homePanel,"🧮  ANALISAR UMA CORRIDA") { showSections(3) }
         button(homePanel,"📊  MEU HISTÓRICO") { showSections(6) }
@@ -363,6 +414,15 @@ class MainActivity : Activity() {
         }
         refresh()
     }
+    private fun dailyGoalStatus(): String {
+        val p=getSharedPreferences("daily_copilot",Context.MODE_PRIVATE)
+        val today=java.text.SimpleDateFormat("yyyy-MM-dd",pt).format(java.util.Date())
+        if(p.getString("day","")!=today) return "Copiloto-A54: informe a meta de faturamento de hoje"
+        val target=p.getFloat("target_reais",0f)
+        return if(p.getBoolean("enabled",false)) String.format(pt,"Meta de hoje: R$ %.2f • acompanhamento solicitado",target)
+        else String.format(pt,"Meta de hoje: R$ %.2f • pausada",target)
+    }
+
     private fun showSections(vararg indexes: Int) {
         homePanel.visibility=View.GONE
         sections.forEachIndexed { index, section ->

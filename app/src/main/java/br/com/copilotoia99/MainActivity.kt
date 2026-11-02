@@ -155,14 +155,27 @@ class MainActivity : Activity() {
                     .setMessage(recorder.report().toString(2)).setPositiveButton("OK",null).show()
             } } catch(e:Exception) { android.app.AlertDialog.Builder(this).setMessage("Falha ao gerar relatório: ${e.message}").setPositiveButton("OK",null).show() }
         }
-        button(recorderCard,"COMPARTILHAR RELATÓRIO (AÇÃO MANUAL)") {
+        button(recorderCard,"REVISAR E ENVIAR DIAGNÓSTICO AO CHATGPT") {
             try { EvolutionRecorder(this).use { recorder ->
                 val payload=recorder.report().toString(2)
-                val intent=Intent(Intent.ACTION_SEND).apply { type="text/plain"; putExtra(Intent.EXTRA_TEXT,payload) }
-                startActivity(Intent.createChooser(intent,"Compartilhar diagnóstico Evolution"))
-            } } catch(e:Exception) { android.widget.Toast.makeText(this,"Não foi possível preparar o relatório",android.widget.Toast.LENGTH_LONG).show() }
+                val message="Diagnóstico do Copiloto IA 99 (dados técnicos):\\n"+payload+
+                    "\\nAnalise falhas de leitura de ofertas e sugira correções. Não presuma acesso remoto ao aplicativo."
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Revisar antes de compartilhar")
+                    .setMessage(message)
+                    .setNegativeButton("Cancelar",null)
+                    .setPositiveButton("Escolher aplicativo") { _, _ ->
+                        val intent=Intent(Intent.ACTION_SEND).apply {
+                            type="text/plain"
+                            putExtra(Intent.EXTRA_TEXT,message)
+                        }
+                        startActivity(Intent.createChooser(intent,"Escolha ChatGPT para enviar o diagnóstico"))
+                    }.show()
+            } } catch(e:Exception) {
+                android.widget.Toast.makeText(this,"Não foi possível preparar o diagnóstico",android.widget.Toast.LENGTH_LONG).show()
+            }
         }
-        recorderCard.addView(text("Nenhum dado é enviado automaticamente. A integração com servidor/API será uma etapa posterior, com consentimento específico.",12f))
+        recorderCard.addView(text("Revise o texto antes de compartilhar. O envio só ocorre após você escolher o destino e confirmar no aplicativo escolhido. Nenhuma API ou servidor externo está conectado.",12f))
         val monitor=card(root,"MONITOR DE OFERTAS • A54")
         monitor.addView(text("Inicie a captura apenas com autorização do Android. A leitura de ofertas é experimental. Não interage com os botões da 99.",13f))
         captureStatus=text("Captura desativada",15f,true)

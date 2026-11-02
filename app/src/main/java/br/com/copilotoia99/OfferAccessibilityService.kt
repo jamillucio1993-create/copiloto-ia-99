@@ -3,7 +3,6 @@ package br.com.copilotoia99
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.graphics.PixelFormat
-import android.os.Build
 import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
@@ -19,6 +18,7 @@ class OfferAccessibilityService : AccessibilityService() {
     private var lastFingerprint = ""
     private var lastPublishedAt = 0L
     private var lastDiagnosticAt = 0L
+    private var lastEventAt = 0L
     private var overlay: TextView? = null
     private var windowManager: WindowManager? = null
 
@@ -37,15 +37,23 @@ class OfferAccessibilityService : AccessibilityService() {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_VIEW_SCROLLED) return
+            event.eventType != AccessibilityEvent.TYPE_VIEW_SCROLLED &&
+            event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED) return
 
-        val root = rootInActiveWindow ?: return
+        lastEventAt = System.currentTimeMillis()
         val text = StringBuilder()
-        collectText(root, text, 0)
-        root.recycle()
+        val roots = mutableListOf<AccessibilityNodeInfo>()
+        rootInActiveWindow?.let { roots.add(it) }
+        event.source?.let { roots.add(it) }
+        try {
+            windows?.forEach { window -> window.root?.let { roots.add(it) } }
+            for (root in roots) collectText(root, text, 0)
+        } finally {
+            roots.forEach { try { it.recycle() } catch (_: Exception) {} }
+        }
         val raw = text.toString().trim()
         if (raw.isBlank()) {
-            diagnostic("99 detectada, mas sem texto acessível")
+            diagnostic("99 detectada, mas sem texto acessível; confira permissões e versão da 99")
             return
         }
 
@@ -57,21 +65,22 @@ class OfferAccessibilityService : AccessibilityService() {
         }
         val fingerprint = "${parsed.price}:${parsed.pickupKm}:${parsed.tripKm}:${parsed.pickupMinutes}:${parsed.tripMinutes}"
         val now = System.currentTimeMillis()
-        if (fingerprint == lastFingerprint || now - lastPublishedAt < 1200) return
+        if (fingerprint == lastFingerprint && now - lastPublishedAt < 8000) return
+        if (now - lastPublishedAt < 1200) return
         lastFingerprint = fingerprint
         lastPublishedAt = now
 
         val offer = OfferInput(
             parsed.price!!, parsed.pickupKm!!, parsed.tripKm!!,
             parsed.pickupMinutes!!, parsed.tripMinutes!!,
-            parsed.rating ?: 4.7, "Desconhecida"
+            parsed.rating ?: 0.0, "Desconhecida"
         )
         val prefs = getSharedPreferences("driver_limits", MODE_PRIVATE)
         val limits = DriverLimits(
             prefs.getFloat("km", 1.8f).toDouble(),
             prefs.getFloat("hour", 35f).toDouble(),
             prefs.getFloat("fare", 10f).toDouble(),
-            prefs.getFloat("rating", 4.7f).toDouble(),
+            if (parsed.rating == null) 0.0 else prefs.getFloat("rating", 4.7f).toDouble(),
             prefs.getFloat("pickupKm", 8f).toDouble(),
             prefs.getFloat("pickupMin", 15f).toDouble()
         )
@@ -113,8 +122,8 @@ class OfferAccessibilityService : AccessibilityService() {
     }
 
     private fun publish(message: String) {
-        sendBroadcast(Intent(CaptureService.ACTION_UPDATE).setPackage(packageName)
-            .putExtra(CaptureService.EXTRA_SUMMARY, message))
+        EvolutionRecorder.recordAsync(this, "accessibility_status")
+        getSharedPreferences("accessibility_status", MODE_PRIVATE).edit().putString("last_status", message).putLong("updated_at", System.currentTimeMillis()).apply()
     }
 
     private fun showOverlay(message: String) {

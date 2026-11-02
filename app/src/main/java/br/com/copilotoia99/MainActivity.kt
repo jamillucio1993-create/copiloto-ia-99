@@ -183,7 +183,7 @@ class MainActivity : Activity() {
                 if (!dialog.isShowing) return@postDelayed
                 rows[index].apply {
                     text = (if (check.passed) "✓ " else "✗ ") + check.label + ": " + check.detail +
-                        (if (!check.passed) "\\nTOQUE PARA CORRIGIR" else "")
+                        (if (!check.passed) "\nTOQUE PARA CORRIGIR" else "")
                     setTextColor(if (check.passed) Color.rgb(22, 125, 66) else Color.rgb(190, 35, 42))
                     if (!check.passed) {
                         setBackgroundColor(Color.rgb(255, 238, 238))

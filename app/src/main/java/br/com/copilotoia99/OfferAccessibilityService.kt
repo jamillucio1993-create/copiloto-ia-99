@@ -27,7 +27,7 @@ import java.util.Locale
  */
 class OfferAccessibilityService : AccessibilityService() {
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val clearExpired = Runnable { clearOffer() }
+    private val clearExpired = Runnable { hideOverlay() }
     private var last99EventAt = 0L
     private var lastReadStartedAt = 0L
     private val poller = object : Runnable {
@@ -60,6 +60,7 @@ class OfferAccessibilityService : AccessibilityService() {
     private var screenshotBusy = false
     private var lastOfferSeenAt = 0L
     private var overlay: TextView? = null
+    private var overlayVisibleUntil = 0L
     private var windowManager: WindowManager? = null
 
     override fun onServiceConnected() {
@@ -199,16 +200,12 @@ class OfferAccessibilityService : AccessibilityService() {
         if (now - pendingAt < 250L) return false
         if (fingerprint == lastFingerprint && now - lastPublishedAt < 8000L) {
             lastOfferConfirmedAt = now
-            mainHandler.removeCallbacks(clearExpired)
-            mainHandler.postDelayed(clearExpired, 5000L)
             return true
         }
         lastFingerprint = fingerprint
         lastPublishedAt = now
         lastOfferSeenAt = now
         lastOfferConfirmedAt = now
-        mainHandler.removeCallbacks(clearExpired)
-        mainHandler.postDelayed(clearExpired, 5000L)
         val offer = OfferInput(
             parsed.price!!, parsed.pickupKm!!, parsed.tripKm!!,
             parsed.pickupMinutes!!, parsed.tripMinutes!!,
@@ -246,10 +243,8 @@ class OfferAccessibilityService : AccessibilityService() {
     private fun clearOffer() {
         lastFingerprint = ""
         pendingFingerprint = null
-        overlay?.apply {
-            text = "Copiloto IA 99 • aguardando oferta"
-            setBackgroundColor(0xE51C2732.toInt())
-        }
+        // Keep the last evaluated ride visible for its full display window.
+        // A newer confirmed ride replaces it immediately.
     }
 
     private fun collectText(node: AccessibilityNodeInfo, out: StringBuilder, depth: Int) {
@@ -269,13 +264,18 @@ class OfferAccessibilityService : AccessibilityService() {
         if (now - lastDiagnosticAt < 5000L || now - lastOfferSeenAt < 10000L) return
         lastDiagnosticAt = now
         publish(message)
-        showOverlay("Copiloto IA 99 • $message")
+        // Diagnostics remain available in the app, without a persistent floating window.
     }
 
     private fun publish(message: String) {
         getSharedPreferences("accessibility_status", MODE_PRIVATE).edit()
             .putString("last_status", message)
             .putLong("updated_at", System.currentTimeMillis()).apply()
+    }
+
+    private fun hideOverlay() {
+        overlay?.visibility = android.view.View.GONE
+        overlayVisibleUntil = 0L
     }
 
     private fun showOverlay(message: String, verdict: String? = null) {
@@ -306,6 +306,7 @@ class OfferAccessibilityService : AccessibilityService() {
             catch (_: Exception) {}
         }
         overlay?.apply {
+            visibility = android.view.View.VISIBLE
             text = message
             setBackgroundColor(when (verdict) {
                 "EXCELENTE", "BOA" -> 0xE51B873D.toInt()
@@ -314,6 +315,10 @@ class OfferAccessibilityService : AccessibilityService() {
                 else -> 0xE51C2732.toInt()
             })
         }
+        // Every new confirmed ride replaces the previous one and gets five seconds.
+        overlayVisibleUntil = SystemClock.elapsedRealtime() + 5000L
+        mainHandler.removeCallbacks(clearExpired)
+        mainHandler.postDelayed(clearExpired, 5000L)
     }
 
     override fun onInterrupt() { publish("Acessibilidade interrompida") }

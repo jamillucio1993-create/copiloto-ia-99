@@ -32,17 +32,17 @@ class OfferAccessibilityService : AccessibilityService() {
     private var lastReadStartedAt = 0L
     private val poller = object : Runnable {
         override fun run() {
-            if (SystemClock.elapsedRealtime() - last99EventAt > 6000L) return
             val root = rootInActiveWindow
             if (root != null) {
                 val pkg = root.packageName?.toString()?.lowercase(Locale.ROOT) ?: ""
                 val out = StringBuilder()
                 try { collectText(root, out, 0) } finally { root.recycle() }
                 if (pkg.contains("99") || pkg.contains("didi")) {
-                    if (!processOffer(out.toString(), "acessibilidade")) requestScreenshot()
-                }
+                    if (out.contains("buscando viagens", true) || out.contains("procurando viagens", true)) clearOffer()
+                    else if (!processOffer(out.toString(), "acessibilidade")) requestScreenshot()
+                    mainHandler.postDelayed(this, 700L)
+                } else clearOffer()
             }
-            mainHandler.postDelayed(this, 700L)
         }
     }
     private var lastOfferConfirmedAt = 0L
@@ -80,24 +80,22 @@ class OfferAccessibilityService : AccessibilityService() {
             )) return
 
         val out = StringBuilder()
-        val roots = mutableListOf<AccessibilityNodeInfo>()
-        rootInActiveWindow?.let(roots::add)
-        event.source?.let(roots::add)
-        try {
-            windows?.forEach { it.root?.let(roots::add) }
-            roots.forEach { collectText(it, out, 0) }
-        } finally {
-            roots.forEach { try { it.recycle() } catch (_: Exception) {} }
+        val root = rootInActiveWindow
+        if (root != null) {
+            try {
+                val activePkg = root.packageName?.toString()?.lowercase(Locale.ROOT) ?: ""
+                if (activePkg.contains("99") || activePkg.contains("didi")) collectText(root, out, 0)
+            } finally { root.recycle() }
         }
         val raw = out.toString()
-        if (raw.isNotBlank() && processOffer(raw, "acessibilidade")) return
         if (raw.contains("buscando viagens", true) || raw.contains("procurando viagens", true)) { clearOffer(); return }
+        if (raw.isNotBlank() && processOffer(raw, "acessibilidade")) return
         requestScreenshot()
     }
 
     private fun requestScreenshot() {
         val now = SystemClock.elapsedRealtime()
-        if (screenshotBusy || now - lastScreenshotAt < 700L) return
+        if (screenshotBusy || now - lastScreenshotAt < 1000L) return
         lastReadStartedAt = now
         lastScreenshotAt = now
         screenshotBusy = true
@@ -171,7 +169,7 @@ class OfferAccessibilityService : AccessibilityService() {
     private fun processOffer(raw: String, source: String): Boolean {
         val parsed = OfferTextParser.parse(raw)
         if (!parsed.complete) return false
-        val fingerprint = "${parsed.price}:${parsed.pickupKm}:${parsed.tripKm}:${parsed.pickupMinutes}:${parsed.tripMinutes}"
+        val fingerprint = "${parsed.price}:${parsed.pickupKm}:${parsed.tripKm}:${parsed.pickupMinutes}:${parsed.tripMinutes}:${parsed.rating}"
         val now = SystemClock.elapsedRealtime()
         if (fingerprint != pendingFingerprint || now - pendingAt > 3500L) {
             pendingFingerprint = fingerprint

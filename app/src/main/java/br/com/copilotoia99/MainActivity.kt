@@ -152,6 +152,9 @@ class MainActivity : Activity() {
             getSharedPreferences("device_health", MODE_PRIVATE).edit()
                 .putLong("last_check_at", System.currentTimeMillis())
                 .putBoolean("required_ready", checks.filter { it.required }.all { it.passed }).apply()
+            if (checks.any { it.required && !it.passed }) {
+                android.widget.Toast.makeText(this, "Copiloto: configuração pendente. Use Verificar configuração do dispositivo.", android.widget.Toast.LENGTH_LONG).show()
+            }
         }
     }
 

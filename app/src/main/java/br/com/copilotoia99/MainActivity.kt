@@ -108,6 +108,17 @@ class MainActivity : Activity() {
         }
         button(monitor,"PARAR MONITORAMENTO") { startService(Intent(this,CaptureService::class.java).setAction(CaptureService.ACTION_STOP));captureStatus.text="Monitoramento encerrado" }
         monitor.addView(captureStatus)
+        val accessibilityCard=card(root,"AUTOMAÇÃO POR ACESSIBILIDADE")
+        accessibilityCard.addView(text("Sem gravação de tela. O Android permite que o Copiloto leia o texto visível de ofertas compatíveis no app 99. Não aceita nem recusa corridas.",13f))
+        val accessibilityStatus=text(if(isAccessibilityServiceEnabled()) "Acessibilidade: ativada" else "Acessibilidade: desativada",14f,true)
+        accessibilityCard.addView(accessibilityStatus)
+        button(accessibilityCard,"ATIVAR AUTOMAÇÃO NO ANDROID") {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+        button(accessibilityCard,"VERIFICAR STATUS") {
+            accessibilityStatus.text=if(isAccessibilityServiceEnabled()) "Acessibilidade: ativada" else "Acessibilidade: desativada"
+        }
+
         val offer=card(root,"Analisar oferta manualmente")
         val price=input(offer,"Valor da corrida (R$)","30")
         val pickupKm=input(offer,"Embarque — distância (km)","2")
@@ -168,6 +179,12 @@ class MainActivity : Activity() {
         root.addView(text("Protótipo de captura experimental: o reconhecimento pode falhar ou confundir campos. A nota do passageiro não é extraída automaticamente. Sem aceite automático, sem nuvem. Dados podem ser perdidos ao desinstalar.",12f))
         refresh()
     }
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val expected = "$packageName/${OfferAccessibilityService::class.java.name}"
+        val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+        return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
+    }
+
     @Deprecated("Activity result API is retained for minimal dependency prototype")
     override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){
         super.onActivityResult(requestCode,resultCode,data)

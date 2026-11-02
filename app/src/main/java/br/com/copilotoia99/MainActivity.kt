@@ -1,6 +1,9 @@
 package br.com.copilotoia99
 
 import android.Manifest
+import android.location.LocationManager
+import android.location.Location
+import android.os.CancellationSignal
 import android.content.pm.PackageManager
 import android.os.Build
 import android.app.Activity
@@ -113,6 +116,19 @@ class MainActivity : Activity() {
         sections.add(group)
         return group
     }
+    private fun locationPermissionStatus(): String = when {
+        checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED -> "precisa autorizada"
+        checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED -> "aproximada autorizada"
+        else -> "não autorizada"
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode,permissions,grantResults)
+        if(requestCode==1002) {
+            Toast.makeText(this,"Localização: "+locationPermissionStatus(),Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor=navy
@@ -218,13 +234,46 @@ class MainActivity : Activity() {
                 }
             }
         }
+        val locationStatus=text("Localização: "+locationPermissionStatus(),14f,true)
+        accessibilityCard.addView(locationStatus)
+        accessibilityCard.addView(text("Localização opcional, somente enquanto o Copiloto estiver aberto. Não há rastreamento em segundo plano nem envio de coordenadas.",12f))
+        button(accessibilityCard,"AUTORIZAR LOCALIZAÇÃO") {
+            if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION), 1002)
+            } else locationStatus.text="Localização: "+locationPermissionStatus()
+        }
+        button(accessibilityCard,"TESTAR LOCALIZAÇÃO ATUAL") {
+            if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                locationStatus.text="Localização: autorize primeiro o acesso"
+            } else {
+                try {
+                    val lm=getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                    val provider=when {
+                        lm.isProviderEnabled(LocationManager.GPS_PROVIDER) && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED -> LocationManager.GPS_PROVIDER
+                        lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+                        else -> null
+                    }
+                    if(provider==null) locationStatus.text="Localização: ative o GPS nas configurações do Android"
+                    else {
+                        locationStatus.text="Localização: buscando posição..."
+                        lm.getCurrentLocation(provider, CancellationSignal(), mainExecutor) { loc: Location? ->
+                            locationStatus.text=if(loc==null) "Localização indisponível. Verifique GPS e sinal."
+                            else "Localização obtida • precisão aproximada: "+loc.accuracy.toInt()+" m. Nenhuma coordenada foi armazenada."
+                        }
+                    }
+                } catch(e: SecurityException) { locationStatus.text="Localização: permissão revogada" }
+                catch(e: Exception) { locationStatus.text="Localização: erro "+e.javaClass.simpleName }
+            }
+        }
         button(accessibilityCard,"VERIFICAR STATUS") {
             accessibilityStatus.text=if(isAccessibilityServiceEnabled()) "Acessibilidade: ativada" else "Acessibilidade: desativada"
             val status=getSharedPreferences("accessibility_status",Context.MODE_PRIVATE)
             val notifications = if (Build.VERSION.SDK_INT >= 33) {
                 if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) "permitidas" else "bloqueadas"
             } else "permissão não exigida"
-            val details="Notificações: "+notifications+"\nAcessibilidade: "+(if(isAccessibilityServiceEnabled()) "ativa" else "inativa")+"\nJanela flutuante: "+(if(Settings.canDrawOverlays(this)) "permitida" else "bloqueada")+
+            val details="Localização: "+locationPermissionStatus()+"\\nNotificações: "+notifications+"\nAcessibilidade: "+(if(isAccessibilityServiceEnabled()) "ativa" else "inativa")+"\nJanela flutuante: "+(if(Settings.canDrawOverlays(this)) "permitida" else "bloqueada")+
                 "\nÚltimo estado: "+status.getString("last_status","Nenhuma leitura")+
                 "\nOrigem: "+status.getString("last_source","Não identificada")+
                 "\nLatência: "+status.getLong("last_latency_ms",-1L)+" ms"

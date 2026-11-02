@@ -312,13 +312,16 @@ class MainActivity : Activity() {
                         val json=org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
                         val tag=json.optString("tag_name","")
                         val current=packageManager.getPackageInfo(packageName,0).versionName ?: "desconhecida"
-                        val currentCode=if(android.os.Build.VERSION.SDK_INT>=28) packageManager.getPackageInfo(packageName,0).longVersionCode else 0L
-                        val latestCode=Regex("""(?:^|[^0-9])(\\d+)$""").find(tag)?.groupValues?.get(1)?.toLongOrNull()
-                        val newer=latestCode!=null && latestCode>currentCode
+                        fun parts(value:String): List<Int> = Regex("""\\d+""").findAll(value).take(3).map { it.value.toIntOrNull() ?: 0 }.toList()
+                        val installedParts=parts(current)
+                        val publishedParts=parts(tag)
+                        val newer=publishedParts.isNotEmpty() && (0..2).firstOrNull { (publishedParts.getOrElse(it){0}) != (installedParts.getOrElse(it){0}) }?.let {
+                            publishedParts.getOrElse(it){0} > installedParts.getOrElse(it){0}
+                        } == true
                         val url=json.optString("html_url","")
                         val description="Instalada: $current • Publicada: $tag"
                         if(newer) "Nova versão disponível!\\n$description\\nAbra a página oficial para baixar."
-                        else if(latestCode==null) "Versão publicada encontrada.\\n$description\\nConfira manualmente se é mais recente."
+                        else if(publishedParts.isEmpty()) "Versão publicada encontrada.\\n$description\\nConfira manualmente se é mais recente."
                         else "Você já está nesta versão ou em uma mais recente.\\n$description"
                     }
                 } finally { connection.disconnect() }

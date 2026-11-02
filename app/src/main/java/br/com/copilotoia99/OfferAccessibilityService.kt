@@ -206,7 +206,7 @@ class OfferAccessibilityService : AccessibilityService() {
                             if (capturedGeneration != screenGeneration || capturedSequence != captureSequence || !is99Foreground) return@addOnSuccessListener
                             consecutiveOcrFailures = 0
                             val ocrNow = SystemClock.elapsedRealtime()
-                            if (recognized.text == lastOcrText && ocrNow - lastOcrAt < 1200L) return@addOnSuccessListener
+                            if (recognized.text == lastOcrText && ocrNow - lastOcrAt < 650L) return@addOnSuccessListener
                             lastOcrText = recognized.text
                             lastOcrAt = ocrNow
                             val cards = extractCardTexts(recognized)
@@ -245,7 +245,7 @@ class OfferAccessibilityService : AccessibilityService() {
             consecutiveOcrFailures++
             diagnostic("Falha ao iniciar captura • tentativas: $consecutiveOcrFailures")
         }
-        }, 100L)
+        }, 70L)
     }
 
     private fun extractCardTexts(recognized: Text): List<String> {

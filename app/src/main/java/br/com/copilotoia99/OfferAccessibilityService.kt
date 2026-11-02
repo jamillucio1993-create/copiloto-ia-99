@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.SystemClock
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.Display
 import android.view.Gravity
@@ -23,6 +25,9 @@ import java.util.Locale
  * Never accepts or rejects rides.
  */
 class OfferAccessibilityService : AccessibilityService() {
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val clearExpired = Runnable { clearOffer() }
+    private var lastOfferConfirmedAt = 0L
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private var lastFingerprint = ""
     private var lastPublishedAt = 0L
@@ -63,6 +68,7 @@ class OfferAccessibilityService : AccessibilityService() {
         }
         val raw = out.toString()
         if (raw.isNotBlank() && processOffer(raw, "acessibilidade")) return
+        if (raw.contains("buscando viagens", true) || raw.contains("procurando viagens", true)) { clearOffer(); return }
         requestScreenshot()
     }
 
@@ -117,10 +123,18 @@ class OfferAccessibilityService : AccessibilityService() {
         if (!parsed.complete) return false
         val fingerprint = "${parsed.price}:${parsed.pickupKm}:${parsed.tripKm}:${parsed.pickupMinutes}:${parsed.tripMinutes}"
         val now = SystemClock.elapsedRealtime()
-        if (fingerprint == lastFingerprint && now - lastPublishedAt < 8000L) return true
+        if (fingerprint == lastFingerprint && now - lastPublishedAt < 8000L) {
+            lastOfferConfirmedAt = now
+            mainHandler.removeCallbacks(clearExpired)
+            mainHandler.postDelayed(clearExpired, 5000L)
+            return true
+        }
         lastFingerprint = fingerprint
         lastPublishedAt = now
         lastOfferSeenAt = now
+        lastOfferConfirmedAt = now
+        mainHandler.removeCallbacks(clearExpired)
+        mainHandler.postDelayed(clearExpired, 5000L)
         val offer = OfferInput(
             parsed.price!!, parsed.pickupKm!!, parsed.tripKm!!,
             parsed.pickupMinutes!!, parsed.tripMinutes!!,
@@ -150,6 +164,14 @@ class OfferAccessibilityService : AccessibilityService() {
             EvolutionRecorder.recordAsync(this, "accessibility_offer_detected")
         } catch (_: Exception) { diagnostic("Oferta lida, mas avaliação falhou") }
         return true
+    }
+
+    private fun clearOffer() {
+        lastFingerprint = ""
+        overlay?.apply {
+            text = "Copiloto IA 99 • aguardando oferta"
+            setBackgroundColor(0xE51C2732.toInt())
+        }
     }
 
     private fun collectText(node: AccessibilityNodeInfo, out: StringBuilder, depth: Int) {
@@ -220,6 +242,7 @@ class OfferAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         try { overlay?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
         overlay = null
+        mainHandler.removeCallbacks(clearExpired)
         recognizer.close()
         super.onDestroy()
     }

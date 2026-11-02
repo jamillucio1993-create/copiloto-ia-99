@@ -29,6 +29,13 @@ class OfferAccessibilityService : AccessibilityService() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val clearExpired = Runnable { hideOverlay() }
     private var last99EventAt = 0L
+    private fun mark99Detected(pkg: String) {
+        getSharedPreferences("accessibility_status", MODE_PRIVATE).edit()
+            .putLong("last_99_seen_at", System.currentTimeMillis())
+            .putString("last_99_package", pkg)
+            .putBoolean("service_connected", true).apply()
+    }
+
     private var lastReadStartedAt = 0L
     private val poller = object : Runnable {
         override fun run() {
@@ -39,6 +46,7 @@ class OfferAccessibilityService : AccessibilityService() {
                 val out = StringBuilder()
                 try { collectText(root, out, 0) } finally { root.recycle() }
                 if (pkg.contains("99") || pkg.contains("didi")) {
+                    mark99Detected(pkg)
                     if (out.contains("buscando viagens", true) || out.contains("procurando viagens", true)) clearOffer()
                     else if (!processOffer(out.toString(), "acessibilidade") && (pendingFingerprint == null || SystemClock.elapsedRealtime() - pendingAt > 1200L)) requestScreenshot()
                     mainHandler.postDelayed(this, 700L)
@@ -71,6 +79,7 @@ class OfferAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        getSharedPreferences("accessibility_status", MODE_PRIVATE).edit().putBoolean("service_connected", true).apply()
         diagnostic("Acessibilidade ativa • aguardando oferta")
         mainHandler.removeCallbacks(poller)
         mainHandler.postDelayed(poller, 700L)
@@ -86,6 +95,7 @@ class OfferAccessibilityService : AccessibilityService() {
             mainHandler.postDelayed(poller, 1500L)
             return
         }
+        mark99Detected(pkg)
         last99EventAt = SystemClock.elapsedRealtime()
         mainHandler.removeCallbacks(poller)
         mainHandler.postDelayed(poller, 700L)
@@ -348,9 +358,13 @@ class OfferAccessibilityService : AccessibilityService() {
         mainHandler.postDelayed(clearExpired, 8000L)
     }
 
-    override fun onInterrupt() { publish("Acessibilidade interrompida") }
+    override fun onInterrupt() {
+        getSharedPreferences("accessibility_status", MODE_PRIVATE).edit().putBoolean("service_connected", false).apply()
+        publish("Acessibilidade interrompida")
+    }
 
     override fun onDestroy() {
+        getSharedPreferences("accessibility_status", MODE_PRIVATE).edit().putBoolean("service_connected", false).apply()
         try { overlay?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
         overlay = null
         mainHandler.removeCallbacks(clearExpired)

@@ -182,6 +182,13 @@ class MainActivity : Activity() {
         }
         button(accessibilityCard,"VERIFICAR STATUS") {
             accessibilityStatus.text=if(isAccessibilityServiceEnabled()) "Acessibilidade: ativada" else "Acessibilidade: desativada"
+            val status=getSharedPreferences("accessibility_status",Context.MODE_PRIVATE)
+            val details="Janela flutuante: "+(if(Settings.canDrawOverlays(this)) "permitida" else "bloqueada")+
+                "\nÚltimo estado: "+status.getString("last_status","Nenhuma leitura")+
+                "\nOrigem: "+status.getString("last_source","Não identificada")+
+                "\nLatência: "+status.getLong("last_latency_ms",-1L)+" ms"
+            android.app.AlertDialog.Builder(this).setTitle("Autodiagnóstico")
+                .setMessage(details).setPositiveButton("OK",null).show()
         }
 
         val offer=card(root,"✍️  ANÁLISE MANUAL")

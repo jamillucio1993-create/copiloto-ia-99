@@ -157,6 +157,17 @@ class OfferAccessibilityService : AccessibilityService() {
         lastScreenshotAt = now
         screenshotBusy = true
         val capturedGeneration = screenGeneration
+        val previousOverlayVisibility = overlay?.visibility
+        val previousListVisibility = listOverlays.map { it.visibility }
+        overlay?.visibility = android.view.View.GONE
+        listOverlays.forEach { it.visibility = android.view.View.GONE }
+        fun restoreOverlays() {
+            if (!is99Foreground || capturedGeneration != screenGeneration) return
+            previousOverlayVisibility?.let { overlay?.visibility = it }
+            listOverlays.forEachIndexed { index, view ->
+                previousListVisibility.getOrNull(index)?.let { view.visibility = it }
+            }
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             screenshotBusy = false
             diagnostic("Captura por acessibilidade indisponível neste Android")
@@ -172,6 +183,7 @@ class OfferAccessibilityService : AccessibilityService() {
                     finally { buffer.close() }
                     if (bitmap == null) {
                         screenshotBusy = false
+                        restoreOverlays()
                         diagnostic("Falha ao converter imagem da oferta")
                         return
                     }
@@ -198,15 +210,18 @@ class OfferAccessibilityService : AccessibilityService() {
                         .addOnCompleteListener {
                             bitmap.recycle()
                             screenshotBusy = false
+                            restoreOverlays()
                         }
                 }
                 override fun onFailure(errorCode: Int) {
                     screenshotBusy = false
+                    restoreOverlays()
                     diagnostic("Captura de acessibilidade indisponível (código $errorCode)")
                 }
             })
         } catch (_: Exception) {
             screenshotBusy = false
+            restoreOverlays()
             diagnostic("Não foi possível capturar a oferta")
         }
     }

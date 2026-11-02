@@ -13,6 +13,10 @@ object OfferTextParser {
         """(\d+(?:[.,]\d+)?)\s*(?:minutos?|mins?)\s*[\(\[]?\s*(\d+(?:[.,]\d+)?)\s*(km|m)\b""",
         RegexOption.IGNORE_CASE
     )
+    private val distanceFirst = Regex(
+        """(\d+(?:[.,]\d+)?)\s*(km|m)\b\s*[,·•|/\-]?\s*(\d+(?:[.,]\d+)?)\s*(?:minutos?|mins?)\b""",
+        RegexOption.IGNORE_CASE
+    )
     private val ratingWithTrips = Regex(
         """\b([345][.,]\d{2})\b\s*[·•\-]?\s*\d+\s*corridas?\b""",
         RegexOption.IGNORE_CASE
@@ -31,11 +35,17 @@ object OfferTextParser {
         // Multiple independent fare values on one screen means multiple cards.
         // Never join the first card's price to another card's distances.
         val price = if (candidates.size == 1) number(candidates[0].groupValues[1]) else null
-        val segments = segment.findAll(text).mapNotNull { match ->
+        val timeFirst = segment.findAll(text).mapNotNull { match ->
             val minutes = number(match.groupValues[1]) ?: return@mapNotNull null
             val distance = number(match.groupValues[2]) ?: return@mapNotNull null
             minutes to if (match.groupValues[3].equals("m", true)) distance / 1000.0 else distance
         }.toList()
+        val kmFirst = distanceFirst.findAll(text).mapNotNull { match ->
+            val distance = number(match.groupValues[1]) ?: return@mapNotNull null
+            val minutes = number(match.groupValues[3]) ?: return@mapNotNull null
+            minutes to if (match.groupValues[2].equals("m", true)) distance / 1000.0 else distance
+        }.toList()
+        val segments = if (timeFirst.size == 2) timeFirst else if (kmFirst.size == 2) kmFirst else timeFirst
         val rating = (ratingWithTrips.find(text)?.groupValues?.get(1)
             ?: ratingWithStar.find(text)?.groupValues?.get(1))?.let(::number)
         val first = segments.getOrNull(0)

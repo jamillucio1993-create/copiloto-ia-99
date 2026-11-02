@@ -58,32 +58,31 @@ class OfferAccessibilityService : AccessibilityService() {
 
     private var lastReadStartedAt = 0L
     private var lastRawFingerprint = ""
+    private val scanOnChange = Runnable { scanActiveWindow() }
+    private fun scanActiveWindow() {
+        val root = rootInActiveWindow ?: return
+        val pkg = root.packageName?.toString()?.lowercase(Locale.ROOT) ?: ""
+        if (!pkg.contains("99") && !pkg.contains("didi")) {
+            root.recycle()
+            on99Background()
+            return
+        }
+        val out = StringBuilder()
+        try { collectText(root, out, 0) } finally { root.recycle() }
+        mark99Detected(pkg)
+        on99Foreground()
+        val raw = out.toString()
+        if (raw.contains("buscando viagens", true) || raw.contains("procurando viagens", true)) {
+            clearOffer()
+            return
+        }
+        if (raw.isBlank()) { requestScreenshot(); return }
+        if (!processOffer(raw, "acessibilidade")) requestScreenshot()
+    }
     private val poller = object : Runnable {
         override fun run() {
-            val root = rootInActiveWindow
-            if (root != null) {
-                lastReadStartedAt = SystemClock.elapsedRealtime()
-                val pkg = root.packageName?.toString()?.lowercase(Locale.ROOT) ?: ""
-                val out = StringBuilder()
-                try { if (pkg.contains("99") || pkg.contains("didi")) collectText(root, out, 0) } finally { root.recycle() }
-                if (pkg.contains("99") || pkg.contains("didi")) {
-                    mark99Detected(pkg)
-                    on99Foreground()
-                    if (out.contains("buscando viagens", true) || out.contains("procurando viagens", true)) clearOffer()
-                    else if (out.isNotEmpty() && !processOffer(out.toString(), "acessibilidade") && (pendingFingerprint == null || SystemClock.elapsedRealtime() - pendingAt > 700L)) requestScreenshot()
-                    mainHandler.postDelayed(this, 350L)
-                } else {
-                    on99Background()
-                    clearOffer()
-                    mainHandler.postDelayed(this, 1500L)
-                }
-            } else if (SystemClock.elapsedRealtime() - last99EventAt < 10000L) {
-                // A transient null window must not permanently stop monitoring.
-                mainHandler.postDelayed(this, 350L)
-            } else {
-                // Continue checking for the 99 app even if no event arrived yet.
-                mainHandler.postDelayed(this, 1500L)
-            }
+            scanActiveWindow()
+            mainHandler.postDelayed(this, if (is99Foreground) 650L else 1200L)
         }
     }
     private var lastOfferConfirmedAt = 0L
@@ -133,19 +132,8 @@ class OfferAccessibilityService : AccessibilityService() {
             )) return
 
         lastReadStartedAt = SystemClock.elapsedRealtime()
-        val out = StringBuilder()
-        val root = rootInActiveWindow
-        if (root != null) {
-            try {
-                val activePkg = root.packageName?.toString()?.lowercase(Locale.ROOT) ?: ""
-                if (activePkg.contains("99") || activePkg.contains("didi")) collectText(root, out, 0)
-            } finally { root.recycle() }
-        }
-        val raw = out.toString()
-        if (raw.contains("buscando viagens", true) || raw.contains("procurando viagens", true)) { clearOffer(); return }
-        if (raw.isNotBlank() && processOffer(raw, "acessibilidade")) return
-        // A complete offer awaiting its second reading is not an OCR failure.
-        if (pendingFingerprint == null || SystemClock.elapsedRealtime() - pendingAt > 700L) requestScreenshot()
+        mainHandler.removeCallbacks(scanOnChange)
+        mainHandler.postDelayed(scanOnChange, 90L)
     }
 
     private fun requestScreenshot() {
@@ -178,8 +166,7 @@ class OfferAccessibilityService : AccessibilityService() {
                             val valid = cards.filter { OfferTextParser.parse(it).complete }
                             if (valid.size == 1) processOffer(valid.first(), "OCR por cartão")
                             else if (valid.size > 1) {
-                                clearOffer()
-                                diagnostic("Múltiplas ofertas • selecione uma")
+                                publish("99 detectada • ${valid.size} ofertas na lista • selecione uma")
                             } else {
                                 val combined = recognized.text
                                 if (!processOffer(combined, "OCR tela inteira")) diagnostic("99 detectada • leitura incompleta")
@@ -396,6 +383,7 @@ class OfferAccessibilityService : AccessibilityService() {
         overlay = null
         mainHandler.removeCallbacks(clearExpired)
         mainHandler.removeCallbacks(poller)
+        mainHandler.removeCallbacks(scanOnChange)
         recognizer.close()
         super.onDestroy()
     }

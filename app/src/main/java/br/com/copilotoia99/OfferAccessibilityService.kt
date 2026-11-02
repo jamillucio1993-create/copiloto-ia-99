@@ -4,8 +4,6 @@ import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.Display
@@ -25,7 +23,6 @@ import java.util.Locale
  * Never accepts or rejects rides.
  */
 class OfferAccessibilityService : AccessibilityService() {
-    private val handler = Handler(Looper.getMainLooper())
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private var lastFingerprint = ""
     private var lastPublishedAt = 0L

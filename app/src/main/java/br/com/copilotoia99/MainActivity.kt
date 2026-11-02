@@ -267,6 +267,23 @@ class MainActivity : Activity() {
                 catch(e: Exception) { locationStatus.text="Localização: erro "+e.javaClass.simpleName }
             }
         }
+        button(accessibilityCard,"VERIFICAR CONEXÃO COM A 99") {
+            val state=getSharedPreferences("accessibility_status",Context.MODE_PRIVATE)
+            val seen=state.getLong("last_99_seen_at",0L)
+            val age=if(seen>0L) System.currentTimeMillis()-seen else Long.MAX_VALUE
+            val connected=state.getBoolean("service_connected",false) && isAccessibilityServiceEnabled()
+            val label=when {
+                !connected -> "ACESSIBILIDADE DESCONECTADA"
+                age in 0L..15000L -> "99 DETECTADA RECENTEMENTE"
+                else -> "99 NÃO DETECTADA RECENTEMENTE"
+            }
+            val last=if(seen>0L) java.text.SimpleDateFormat("dd/MM HH:mm:ss",pt).format(java.util.Date(seen)) else "Nunca"
+            val pkg=state.getString("last_99_package","Não identificado")
+            android.app.AlertDialog.Builder(this).setTitle(label)
+                .setMessage("Última detecção: "+last+"\nPacote: "+pkg+"\nServiço: "+(if(connected) "conectado" else "desconectado")+
+                    "\n\nAbra a 99, volte ao Copiloto e repita esta verificação.")
+                .setPositiveButton("OK",null).show()
+        }
         button(accessibilityCard,"VERIFICAR STATUS") {
             accessibilityStatus.text=if(isAccessibilityServiceEnabled()) "Acessibilidade: ativada" else "Acessibilidade: desativada"
             val status=getSharedPreferences("accessibility_status",Context.MODE_PRIVATE)

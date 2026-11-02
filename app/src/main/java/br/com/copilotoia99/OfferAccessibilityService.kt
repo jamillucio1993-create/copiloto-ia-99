@@ -161,12 +161,13 @@ class OfferAccessibilityService : AccessibilityService() {
         screenshotBusy = true
         val capturedGeneration = screenGeneration
         val capturedSequence = ++captureSequence
+        var newOfferDisplayed = false
         val previousOverlayVisibility = overlay?.visibility
         val previousListVisibility = listOverlays.map { it.visibility }
         overlay?.visibility = android.view.View.GONE
         listOverlays.forEach { it.visibility = android.view.View.GONE }
         fun restoreOverlays() {
-            if (!is99Foreground || capturedGeneration != screenGeneration || capturedSequence != captureSequence) return
+            if (newOfferDisplayed || !is99Foreground || capturedGeneration != screenGeneration || capturedSequence != captureSequence) return
             previousOverlayVisibility?.let { overlay?.visibility = it }
             listOverlays.forEachIndexed { index, view ->
                 previousListVisibility.getOrNull(index)?.let { view.visibility = it }
@@ -203,12 +204,13 @@ class OfferAccessibilityService : AccessibilityService() {
                             val valid = cards.filter { OfferTextParser.parse(it).complete }
                             if (cards.size > 1) {
                                 showListOffers(cards.take(3))
+                                newOfferDisplayed = true
                             } else if (valid.size == 1) {
-                                processOffer(valid.first(), "OCR por cartão")
+                                newOfferDisplayed = processOffer(valid.first(), "OCR por cartão")
                             } else {
                                 val combined = recognized.text
-                                if (!processOffer(combined, "OCR tela inteira"))
-                                    diagnostic("99 detectada • leitura incompleta")
+                                newOfferDisplayed = processOffer(combined, "OCR tela inteira")
+                                if (!newOfferDisplayed) diagnostic("99 detectada • leitura incompleta")
                             }
                         }
                         .addOnFailureListener {

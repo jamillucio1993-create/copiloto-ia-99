@@ -9,8 +9,8 @@ android {
         applicationId = "br.com.copilotoia99"
         minSdk = 31
         targetSdk = 35
-        versionCode = 10
-        versionName = "1.7.0-diagnostics"
+        versionCode = 11
+        versionName = "1.8.0-sharing"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

@@ -62,7 +62,7 @@ class MainActivity : Activity() {
         setContentView(ScrollView(this).apply { isFillViewport=true; addView(root) })
         root.addView(text("COPILOTO IA 99",25f,true))
         root.addView(text("Samsung Galaxy A54 • modo local e offline • sem vínculo com a 99",12f))
-        root.addView(text("A leitura automática é experimental e só funciona após iniciar a captura autorizada.",13f))
+        root.addView(text("A automação por acessibilidade pode ler ofertas compatíveis sem gravação contínua da tela. A captura autorizada continua disponível como alternativa.",13f))
         val evolution=EvolutionEngine(this)
         val evoCard=card(root,"COPILOTO EVOLUTION • v1.1")
         val evoStatus=text(if(evolution.enabled()) "Compartilhamento de diagnósticos: autorizado" else "Compartilhamento de diagnósticos: desligado",13f)

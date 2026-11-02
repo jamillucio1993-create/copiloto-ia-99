@@ -85,11 +85,14 @@ class OfferAccessibilityService : AccessibilityService() {
             return
         }
         val now = SystemClock.elapsedRealtime()
-        if (raw == lastAccessibleText && now - lastAccessibleAt < 1600L) {
+        if (raw == lastAccessibleText && now - lastAccessibleAt < 500L) {
             if (pendingFingerprint != null && now - pendingAt >= 120L) processOffer(raw, "acessibilidade confirmada")
             return
         }
-        if (raw != lastAccessibleText) screenGeneration++
+        if (raw != lastAccessibleText) {
+            screenGeneration++
+            lastOcrText = ""
+        }
         lastAccessibleText = raw
         lastAccessibleAt = now
         if (raw.isBlank()) { requestScreenshot(); return }
@@ -155,7 +158,7 @@ class OfferAccessibilityService : AccessibilityService() {
 
     private fun requestScreenshot() {
         val now = SystemClock.elapsedRealtime()
-        if (screenshotBusy || now - lastScreenshotAt < 650L) return
+        if (screenshotBusy || now - lastScreenshotAt < 450L) return
         lastReadStartedAt = now
         lastScreenshotAt = now
         screenshotBusy = true

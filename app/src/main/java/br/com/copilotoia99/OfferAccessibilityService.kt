@@ -180,6 +180,10 @@ class OfferAccessibilityService : AccessibilityService() {
             return
         }
         mainHandler.postDelayed({
+        if (capturedSequence != captureSequence || capturedGeneration != screenGeneration || !is99Foreground) {
+            screenshotBusy = false
+            return@postDelayed
+        }
         try {
             takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
                 override fun onSuccess(result: ScreenshotResult) {

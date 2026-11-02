@@ -129,6 +129,31 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun showDeviceDiagnostics() {
+        val checks = DeviceHealthCheck.run(this)
+        val requiredOk = checks.filter { it.required }.all { it.passed }
+        val report = checks.joinToString("\n\n") { check ->
+            (if (check.passed) "✓ " else if (check.required) "✗ " else "• ") + check.label + ": " + check.detail
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(if (requiredOk) "Copiloto • configuração básica pronta" else "Copiloto • configuração pendente")
+            .setMessage(report + "\n\nO reconhecimento real das ofertas só pode ser validado durante o uso da 99.")
+            .setPositiveButton("Entendi", null)
+            .setNeutralButton("Verificar novamente") { _, _ -> showDeviceDiagnostics() }
+            .show()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::store.isInitialized) {
+            // Recheck after returning from Android permissions settings.
+            val checks = DeviceHealthCheck.run(this)
+            getSharedPreferences("device_health", MODE_PRIVATE).edit()
+                .putLong("last_check_at", System.currentTimeMillis())
+                .putBoolean("required_ready", checks.filter { it.required }.all { it.passed }).apply()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor=navy
@@ -141,6 +166,8 @@ class MainActivity : Activity() {
         val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(14),dp(16),dp(36)); setBackgroundColor(Color.rgb(244,247,250)) }
         scroll=ScrollView(this).apply { isFillViewport=true; clipToPadding=false; addView(root) }
         setContentView(scroll)
+        button(root, "VERIFICAR CONFIGURAÇÃO DO DISPOSITIVO") { showDeviceDiagnostics() }
+        if (savedInstanceState == null) scroll.post { showDeviceDiagnostics() }
         val hero=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(22),dp(20),dp(22)); background=rounded(navy); elevation=dp(3).toFloat() }
         root.addView(hero)
         hero.addView(text("🚘  COPILOTO IA 99",24f,true).apply { setTextColor(Color.WHITE) })

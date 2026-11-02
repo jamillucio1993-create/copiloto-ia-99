@@ -23,9 +23,10 @@ object OfferTextParser {
             val distance = n(match.groupValues[2]) ?: return@mapNotNull null
             Triple(minutes, if (match.groupValues[3].lowercase(Locale.ROOT) == "m") distance / 1000.0 else distance, match.range.first)
         }.toList()
+        // Do not combine pickup/trip segments across multiple visible offer cards.
         val first = segments.getOrNull(0)
         val second = segments.getOrNull(1)
-        val rating = Regex("""(?:★|☆|⭐|nota|avaliação)?\\s*\\b([345][.,][0-9]{2})\\b\\s*(?:[·•\\s]*[0-9]+\\s*corridas)?""", RegexOption.IGNORE_CASE)
+        val rating = Regex("""(?:★|☆|⭐|nota|avaliação)?\s*\b([345][.,][0-9]{2})\b\s*(?:[·•\s]*[0-9]+\\s*corridas)?""", RegexOption.IGNORE_CASE)
             .findAll(text).mapNotNull { match ->
                 val value = n(match.groupValues[1]) ?: return@mapNotNull null
                 val context = text.substring((match.range.first - 16).coerceAtLeast(0),

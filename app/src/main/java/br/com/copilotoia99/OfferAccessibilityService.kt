@@ -46,6 +46,8 @@ class OfferAccessibilityService : AccessibilityService() {
         }
     }
     private var lastOfferConfirmedAt = 0L
+    private var pendingFingerprint: String? = null
+    private var pendingAt = 0L
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private var lastFingerprint = ""
     private var lastPublishedAt = 0L
@@ -171,6 +173,12 @@ class OfferAccessibilityService : AccessibilityService() {
         if (!parsed.complete) return false
         val fingerprint = "${parsed.price}:${parsed.pickupKm}:${parsed.tripKm}:${parsed.pickupMinutes}:${parsed.tripMinutes}"
         val now = SystemClock.elapsedRealtime()
+        if (fingerprint != pendingFingerprint || now - pendingAt > 3500L) {
+            pendingFingerprint = fingerprint
+            pendingAt = now
+            return false
+        }
+        if (now - pendingAt < 250L) return false
         if (fingerprint == lastFingerprint && now - lastPublishedAt < 8000L) {
             lastOfferConfirmedAt = now
             mainHandler.removeCallbacks(clearExpired)
@@ -219,6 +227,7 @@ class OfferAccessibilityService : AccessibilityService() {
 
     private fun clearOffer() {
         lastFingerprint = ""
+        pendingFingerprint = null
         overlay?.apply {
             text = "Copiloto IA 99 • aguardando oferta"
             setBackgroundColor(0xE51C2732.toInt())

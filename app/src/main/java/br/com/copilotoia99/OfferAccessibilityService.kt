@@ -82,7 +82,10 @@ class OfferAccessibilityService : AccessibilityService() {
             return
         }
         val now = SystemClock.elapsedRealtime()
-        if (raw == lastAccessibleText && now - lastAccessibleAt < 1600L) return
+        if (raw == lastAccessibleText && now - lastAccessibleAt < 1600L) {
+            if (pendingFingerprint != null && now - pendingAt >= 120L) processOffer(raw, "acessibilidade confirmada")
+            return
+        }
         if (raw != lastAccessibleText) screenGeneration++
         lastAccessibleText = raw
         lastAccessibleAt = now
@@ -210,29 +213,11 @@ class OfferAccessibilityService : AccessibilityService() {
 
     private fun extractCardTexts(recognized: Text): List<String> {
         val lines = recognized.textBlocks.flatMap { it.lines }
-            .filter { it.boundingBox != null }
-            .sortedWith(compareBy({ it.boundingBox!!.top }, { it.boundingBox!!.left }))
-        // The accept button is the bottom boundary of each complete card.
-        // Suggested counteroffers and R$/km labels are not separate rides.
-        val accept = Regex("""aceitar\\s+por\\s+R\\$\\s*\\d+[.,]\\d{2}""", RegexOption.IGNORE_CASE)
-        val buttons = lines.filter { accept.containsMatchIn(it.text) }
-        if (buttons.isEmpty()) return emptyList()
-        val groups = mutableListOf<String>()
-        var previousBottom = Int.MIN_VALUE
-        for (button in buttons.take(3)) {
-            val bottom = button.boundingBox!!.bottom
-            val group = lines.filter { it.boundingBox!!.centerY() > previousBottom &&
-                it.boundingBox!!.centerY() <= bottom }
-            previousBottom = bottom
-            val text = group.filterNot { accept.containsMatchIn(it.text) ||
-                (it.text.trim().matches(Regex("""R\\$\\s*\\d+[.,]\\d{2}""")) &&
-                 it.boundingBox!!.centerY() > bottom - 90) }
-                .joinToString("\n") { it.text }
-            // One accept button and exactly one independently parsed offer.
-            // Never infer missing pickup or destination data from other cards.
-            groups.add(text)
-        }
-        return groups
+            .mapNotNull { line ->
+                val bounds = line.boundingBox ?: return@mapNotNull null
+                CardLine(line.text, bounds.left, bounds.top, bounds.right, bounds.bottom)
+            }
+        return OfferCardSegmenter.segment(lines).map { it.text }
     }
 
     private fun showListOffers(cards: List<String>) {
@@ -242,7 +227,7 @@ class OfferAccessibilityService : AccessibilityService() {
             prefs.getFloat("km", 1.8f).toDouble(),
             prefs.getFloat("hour", 35f).toDouble(),
             prefs.getFloat("fare", 10f).toDouble(),
-            0.0,
+            prefs.getFloat("rating", 4.7f).toDouble(),
             prefs.getFloat("pickupKm", 8f).toDouble(),
             prefs.getFloat("pickupMin", 15f).toDouble()
         )
@@ -334,7 +319,7 @@ class OfferAccessibilityService : AccessibilityService() {
         if (now - pendingAt < 120L) return true
         if (fingerprint == lastFingerprint && now - lastPublishedAt < 8000L) {
             lastOfferConfirmedAt = now
-            if (overlay != null && overlay?.visibility != android.view.View.VISIBLE) {
+            if (overlay != null && overlay?.visibility != android.view.View.VISIBLE && listOverlays.none { it.visibility == android.view.View.VISIBLE }) {
                 overlay?.visibility = android.view.View.VISIBLE
             }
             mainHandler.removeCallbacks(clearExpired)

@@ -67,7 +67,11 @@ class OfferAccessibilityService : AccessibilityService() {
         if (event == null) return
         val pkg = event.packageName?.toString()?.lowercase(Locale.ROOT) ?: return
         if (pkg == packageName.lowercase(Locale.ROOT)) return
-        if (!pkg.contains("99") && !pkg.contains("didi")) return
+        if (!pkg.contains("99") && !pkg.contains("didi")) {
+            mainHandler.removeCallbacks(poller)
+            clearOffer()
+            return
+        }
         last99EventAt = SystemClock.elapsedRealtime()
         mainHandler.removeCallbacks(poller)
         mainHandler.postDelayed(poller, 700L)
@@ -266,11 +270,12 @@ class OfferAccessibilityService : AccessibilityService() {
                 setTextColor(android.graphics.Color.WHITE)
                 setBackgroundColor(0xE51C2732.toInt())
                 textSize = 14f
-                setPadding(18, 12, 18, 12)
-                maxLines = 3
+                gravity = Gravity.CENTER
+                setPadding(12, 8, 12, 8)
+                maxLines = 2
             }
             val params = WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -278,7 +283,7 @@ class OfferAccessibilityService : AccessibilityService() {
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT
             ).apply {
-                gravity = Gravity.TOP
+                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
                 y = (resources.displayMetrics.density * 38).toInt()
             }
             try { windowManager?.addView(view, params); overlay = view }

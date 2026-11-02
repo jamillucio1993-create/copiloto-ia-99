@@ -83,6 +83,7 @@ class OfferAccessibilityService : AccessibilityService() {
         }
         val now = SystemClock.elapsedRealtime()
         if (raw == lastAccessibleText && now - lastAccessibleAt < 1600L) return
+        if (raw != lastAccessibleText) screenGeneration++
         lastAccessibleText = raw
         lastAccessibleAt = now
         if (raw.isBlank()) { requestScreenshot(); return }
@@ -142,7 +143,6 @@ class OfferAccessibilityService : AccessibilityService() {
             )) return
 
         lastReadStartedAt = SystemClock.elapsedRealtime()
-        screenGeneration++
         mainHandler.removeCallbacks(scanOnChange)
         mainHandler.postDelayed(scanOnChange, 90L)
     }

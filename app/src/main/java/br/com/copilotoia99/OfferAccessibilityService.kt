@@ -164,12 +164,14 @@ class OfferAccessibilityService : AccessibilityService() {
                         .addOnSuccessListener { recognized ->
                             val cards = extractCardTexts(recognized)
                             val valid = cards.filter { OfferTextParser.parse(it).complete }
-                            if (valid.size == 1) processOffer(valid.first(), "OCR por cartão")
-                            else if (valid.size > 1) {
-                                publish("99 detectada • ${valid.size} ofertas na lista • selecione uma")
+                            if (cards.size > 1) {
+                                showListOffers(cards.take(3))
+                            } else if (valid.size == 1) {
+                                processOffer(valid.first(), "OCR por cartão")
                             } else {
                                 val combined = recognized.text
-                                if (!processOffer(combined, "OCR tela inteira")) diagnostic("99 detectada • leitura incompleta")
+                                if (!processOffer(combined, "OCR tela inteira"))
+                                    diagnostic("99 detectada • leitura incompleta")
                             }
                         }
                         .addOnFailureListener { diagnostic("OCR não conseguiu ler a oferta") }
@@ -219,6 +221,46 @@ class OfferAccessibilityService : AccessibilityService() {
             groups[index].add(line)
         }
         return groups.map { group -> group.joinToString("\n") { it.text } }
+    }
+
+    private fun showListOffers(cards: List<String>) {
+        if (cards.isEmpty()) return
+        val prefs = getSharedPreferences("driver_limits", MODE_PRIVATE)
+        val limits = DriverLimits(
+            prefs.getFloat("km", 1.8f).toDouble(),
+            prefs.getFloat("hour", 35f).toDouble(),
+            prefs.getFloat("fare", 10f).toDouble(),
+            0.0,
+            prefs.getFloat("pickupKm", 8f).toDouble(),
+            prefs.getFloat("pickupMin", 15f).toDouble()
+        )
+        val summaries = cards.mapIndexed { index, card ->
+            val parsed = OfferTextParser.parse(card)
+            val prefix = "CORRIDA ${index + 1}"
+            if (!parsed.complete) {
+                val price = parsed.price?.let { String.format(Locale("pt", "BR"), "R$ %.2f", it) } ?: "valor não lido"
+                "$prefix • $price • dados insuficientes"
+            } else {
+                try {
+                    val offer = OfferInput(
+                        parsed.price!!, parsed.pickupKm!!, parsed.tripKm!!,
+                        parsed.pickupMinutes!!, parsed.tripMinutes!!,
+                        parsed.rating ?: 0.0, "Desconhecida"
+                    )
+                    val evaluation = OfferEvaluator.evaluate(offer, limits)
+                    String.format(Locale("pt", "BR"),
+                        "%s • R$ %.2f • %s\n%.2f/km • R$ %.2f/h",
+                        prefix, parsed.price, evaluation.verdict,
+                        evaluation.perKm, evaluation.perHour)
+                } catch (_: Exception) { "$prefix • erro na avaliação" }
+            }
+        }
+        if (summaries.isEmpty()) return
+        val output = summaries.joinToString("\n────────────\n")
+        if (output == lastRawFingerprint && overlay?.visibility == android.view.View.VISIBLE) return
+        lastRawFingerprint = output
+        showOverlay(output, "LISTA")
+        publish("99 detectada • ${cards.size} cartões • até 3 avaliações exibidas")
     }
 
     private fun processOffer(raw: String, source: String): Boolean {
@@ -285,6 +327,7 @@ class OfferAccessibilityService : AccessibilityService() {
 
     private fun clearOffer() {
         lastFingerprint = ""
+        lastRawFingerprint = ""
         pendingFingerprint = null
         // Clear the last offer after its display window when the 99 stops presenting it.
         mainHandler.removeCallbacks(clearExpired)
@@ -319,6 +362,7 @@ class OfferAccessibilityService : AccessibilityService() {
 
     private fun hideOverlay() {
         overlay?.visibility = android.view.View.GONE
+        lastRawFingerprint = ""
         overlayVisibleUntil = 0L
     }
 
@@ -335,7 +379,7 @@ class OfferAccessibilityService : AccessibilityService() {
                 textSize = 14f
                 gravity = Gravity.CENTER
                 setPadding(12, 8, 12, 8)
-                maxLines = 2
+                maxLines = 10
             }
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
@@ -358,6 +402,7 @@ class OfferAccessibilityService : AccessibilityService() {
             text = message
             setBackgroundColor(when (verdict) {
                 "CONEXAO" -> 0xE51B557C.toInt()
+                "LISTA" -> 0xEE162A3D.toInt()
                 "EXCELENTE", "BOA" -> 0xE51B873D.toInt()
                 "REGULAR" -> 0xE5C58A12.toInt()
                 "RUIM" -> 0xE5B4232C.toInt()

@@ -62,6 +62,7 @@ class OfferAccessibilityService : AccessibilityService() {
     private var screenGeneration = 0L
     private var captureSequence = 0L
     private var consecutiveOcrFailures = 0
+    private var captureStartedAt = 0L
     private var lastAccessibleText = ""
     private var lastAccessibleAt = 0L
     private var lastOcrText = ""
@@ -162,6 +163,7 @@ class OfferAccessibilityService : AccessibilityService() {
         lastReadStartedAt = now
         lastScreenshotAt = now
         screenshotBusy = true
+        captureStartedAt = now
         val capturedGeneration = screenGeneration
         val capturedSequence = ++captureSequence
         var newOfferDisplayed = false
@@ -205,6 +207,9 @@ class OfferAccessibilityService : AccessibilityService() {
                         .addOnSuccessListener { recognized ->
                             if (capturedGeneration != screenGeneration || capturedSequence != captureSequence || !is99Foreground) return@addOnSuccessListener
                             consecutiveOcrFailures = 0
+                            getSharedPreferences("accessibility_status", MODE_PRIVATE).edit()
+                                .putLong("last_ocr_latency_ms", SystemClock.elapsedRealtime() - captureStartedAt)
+                                .putLong("last_ocr_success_at", System.currentTimeMillis()).apply()
                             val ocrNow = SystemClock.elapsedRealtime()
                             if (recognized.text == lastOcrText && ocrNow - lastOcrAt < 650L) return@addOnSuccessListener
                             lastOcrText = recognized.text
@@ -224,6 +229,8 @@ class OfferAccessibilityService : AccessibilityService() {
                         }
                         .addOnFailureListener {
                             consecutiveOcrFailures++
+                            getSharedPreferences("accessibility_status", MODE_PRIVATE).edit()
+                                .putInt("consecutive_ocr_failures", consecutiveOcrFailures).apply()
                             diagnostic("Falha no reconhecimento OCR • tentativas: $consecutiveOcrFailures")
                         }
                         .addOnCompleteListener {

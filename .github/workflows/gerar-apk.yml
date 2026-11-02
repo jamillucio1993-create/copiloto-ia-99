@@ -31,11 +31,11 @@ jobs:
           gradle-version: '8.9'
 
       - name: Compilar APK
-        run: gradle :aplicativo:assembleDebug --stacktrace
+        run: gradle :app:assembleDebug --stacktrace
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
           name: Copiloto-IA-99-APK
-          path: aplicativo/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

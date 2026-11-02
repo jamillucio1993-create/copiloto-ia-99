@@ -212,32 +212,24 @@ class OfferAccessibilityService : AccessibilityService() {
         val lines = recognized.textBlocks.flatMap { it.lines }
             .filter { it.boundingBox != null }
             .sortedWith(compareBy({ it.boundingBox!!.top }, { it.boundingBox!!.left }))
-        val anchor = Regex("""R\$\s*\d+[.,]\d{2}""")
-        val fares = lines.filter {
-            anchor.containsMatchIn(it.text) && !it.text.contains("/km", true) &&
-                !it.text.contains("por embarque", true) && !it.text.contains("por km", true)
+        // The accept button is the bottom boundary of each complete card.
+        // Suggested counteroffers and R$/km labels are not separate rides.
+        val accept = Regex("""aceitar\\s+por\\s+R\\$\\s*\\d+[.,]\\d{2}""", RegexOption.IGNORE_CASE)
+        val buttons = lines.filter { accept.containsMatchIn(it.text) }
+        if (buttons.isEmpty()) return emptyList()
+        val groups = mutableListOf<String>()
+        var previousBottom = Int.MIN_VALUE
+        for (button in buttons.take(3)) {
+            val bottom = button.boundingBox!!.bottom
+            val group = lines.filter { it.boundingBox!!.centerY() > previousBottom &&
+                it.boundingBox!!.centerY() <= bottom }
+            previousBottom = bottom
+            val text = group.joinToString("\\n") { it.text }
+            // One accept button and exactly one independently parsed offer.
+            // Never infer missing pickup or destination data from other cards.
+            groups.add(text)
         }
-        if (fares.isEmpty()) return emptyList()
-        // A single fare can still be accompanied by unrelated prices or a
-        // partially visible card. The parser must validate the full card.
-        if (fares.size == 1) return listOf(lines.joinToString("\n") { it.text })
-        // Cards in the same row cannot safely be split by Y coordinate.
-        // Refuse to mix their fare, pickup and trip fields.
-        val overlappingRows = fares.zipWithNext().any { (a, b) ->
-            val first = a.boundingBox!!
-            val second = b.boundingBox!!
-            first.top < second.bottom && second.top < first.bottom
-        }
-        if (overlappingRows) return emptyList()
-        val centers = fares.map { it.boundingBox!!.centerY() }.sorted()
-        val boundaries = centers.zipWithNext { a, b -> (a + b) / 2 }
-        val groups = MutableList(centers.size) { mutableListOf<Text.Line>() }
-        for (line in lines) {
-            val y = line.boundingBox!!.centerY()
-            val index = boundaries.indexOfFirst { y < it }.let { if (it < 0) groups.lastIndex else it }
-            groups[index].add(line)
-        }
-        return groups.map { group -> group.joinToString("\n") { it.text } }
+        return groups
     }
 
     private fun showListOffers(cards: List<String>) {

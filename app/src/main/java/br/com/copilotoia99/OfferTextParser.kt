@@ -11,17 +11,21 @@ object OfferTextParser {
     fun parse(raw:String): ParsedOffer {
         val text=raw.replace('\u00a0',' ')
         val price=money.find(text)?.groupValues?.get(1)?.let(::n)
-        val measurements=number.findAll(text).mapNotNull { m ->
-            val value=n(m.groupValues[1])?:return@mapNotNull null
-            val unit=m.groupValues[2].lowercase(Locale.ROOT)
-            Pair(if(unit=="m")value/1000.0 else value, if(unit=="m"||unit=="km")"km" else "min")
+        // 99 offer cards show "4 min (887 m)" and "6 min (2 km)".
+        // Pair time and distance from the same segment, never from unrelated UI labels.
+        val pair = Regex("""([0-9]+(?:[.,][0-9]+)?)\\s*(?:minutos|mins|min)\\s*\\(?\\s*([0-9]+(?:[.,][0-9]+)?)\\s*(km|m)\\b""", RegexOption.IGNORE_CASE)
+        val segments=pair.findAll(text).mapNotNull { m ->
+            val minutes=n(m.groupValues[1]) ?: return@mapNotNull null
+            val distance=n(m.groupValues[2]) ?: return@mapNotNull null
+            Triple(minutes, if(m.groupValues[3].lowercase(Locale.ROOT)=="m") distance/1000.0 else distance, m.range.first)
         }.toList()
-        val distances=measurements.filter {it.second=="km"}.map{it.first}
-        val times=measurements.filter {it.second=="min"}.map{it.first}
-        // Require two distinct distance and time readings in reading order.
-        val pk=distances.getOrNull(0); val tk=distances.getOrNull(1)
-        val pm=times.getOrNull(0); val tm=times.getOrNull(1)
+        val first=segments.getOrNull(0)
+        val second=segments.getOrNull(1)
+        val pk=first?.second; val tk=second?.second
+        val pm=first?.first; val tm=second?.first
+        val rating=Regex("""\\b([345][.,][0-9]{2})\\s*[·•]\\s*[0-9]+\\s*corridas""",RegexOption.IGNORE_CASE)
+            .find(text)?.groupValues?.get(1)?.let(::n)
         val complete=price!=null&&pk!=null&&tk!=null&&pm!=null&&tm!=null&&price>0&&tk>0&&tm>0
-        return ParsedOffer(price,pk,pm,tk,tm,null,complete,text.take(280))
+        return ParsedOffer(price,pk,pm,tk,tm,rating,complete,text.take(280))
     }
 }

@@ -31,7 +31,7 @@ object OfferEvaluator {
         if (input.price < limits.minFare) violations.add("valor mínimo")
         if (perKm < limits.minPerKm) violations.add("R$/km mínimo")
         if (perHour < limits.minPerHour) violations.add("R$/h mínimo")
-        if (input.rating < limits.minRating) violations.add("nota do passageiro")
+        if (input.rating > 0.0 && input.rating < limits.minRating) violations.add("nota do passageiro")
         if (input.pickupKm > limits.maxPickupKm) violations.add("distância de embarque")
         if (input.pickupMinutes > limits.maxPickupMinutes) violations.add("tempo de embarque")
         // Incremental on-device learning: only observed waiting time influences the destination.

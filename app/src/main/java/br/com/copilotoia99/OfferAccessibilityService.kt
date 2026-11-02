@@ -36,7 +36,8 @@ class OfferAccessibilityService : AccessibilityService() {
         if (!pkg.contains("99") && !pkg.contains("didi")) return
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) return
+            event.eventType != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED &&
+            event.eventType != AccessibilityEvent.TYPE_VIEW_SCROLLED) return
 
         val root = rootInActiveWindow ?: return
         val text = StringBuilder()
@@ -63,7 +64,7 @@ class OfferAccessibilityService : AccessibilityService() {
         val offer = OfferInput(
             parsed.price!!, parsed.pickupKm!!, parsed.tripKm!!,
             parsed.pickupMinutes!!, parsed.tripMinutes!!,
-            4.99, "Desconhecida"
+            parsed.rating ?: 0.0, "Desconhecida"
         )
         val prefs = getSharedPreferences("driver_limits", MODE_PRIVATE)
         val limits = DriverLimits(

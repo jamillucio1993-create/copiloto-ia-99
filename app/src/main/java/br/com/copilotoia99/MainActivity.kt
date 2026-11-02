@@ -297,45 +297,74 @@ class MainActivity : Activity() {
     }
 
     private fun checkForUpdates() {
-        android.widget.Toast.makeText(this,"Consultando versões publicadas...",android.widget.Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Verificando atualizações...", Toast.LENGTH_SHORT).show()
         Thread {
-            val message=try {
-                val connection=(java.net.URL("https://api.github.com/repos/jamillucio1993-create/copiloto-ia-99/releases/latest").openConnection() as java.net.HttpURLConnection)
-                connection.connectTimeout=7000
-                connection.readTimeout=7000
-                connection.setRequestProperty("Accept","application/vnd.github+json")
-                connection.setRequestProperty("User-Agent","Copiloto-IA-99")
-                try {
-                    if(connection.responseCode==404) "Ainda não existe uma versão publicada em Releases. Consulte o GitHub Actions para compilações de teste."
-                    else if(connection.responseCode!=200) "Não foi possível consultar atualizações (HTTP ${connection.responseCode})."
-                    else {
-                        val json=org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-                        val tag=json.optString("tag_name","")
-                        val current=packageManager.getPackageInfo(packageName,0).versionName ?: "desconhecida"
-                        fun parts(value:String): List<Int> = Regex("""\\d+""").findAll(value).take(3).map { it.value.toIntOrNull() ?: 0 }.toList()
-                        val installedParts=parts(current)
-                        val publishedParts=parts(tag)
-                        val newer=publishedParts.isNotEmpty() && (0..2).firstOrNull { (publishedParts.getOrElse(it){0}) != (installedParts.getOrElse(it){0}) }?.let {
-                            publishedParts.getOrElse(it){0} > installedParts.getOrElse(it){0}
-                        } == true
-                        val url=json.optString("html_url","")
-                        val description="Instalada: $current • Publicada: $tag"
-                        if(newer) "Nova versão disponível!\\n$description\\nAbra a página oficial para baixar."
-                        else if(publishedParts.isEmpty()) "Versão publicada encontrada.\\n$description\\nConfira manualmente se é mais recente."
-                        else "Você já está nesta versão ou em uma mais recente.\\n$description"
-                    }
+            try {
+                val connection = (java.net.URL("https://api.github.com/repos/jamillucio1993-create/copiloto-ia-99/releases/latest").openConnection() as java.net.HttpURLConnection)
+                connection.connectTimeout = 8000
+                connection.readTimeout = 8000
+                connection.setRequestProperty("Accept", "application/vnd.github+json")
+                connection.setRequestProperty("User-Agent", "Copiloto-IA-99")
+                val response = try {
+                    if (connection.responseCode == 200) org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                    else null
                 } finally { connection.disconnect() }
-            } catch (_: Exception) { "Sem conexão ou falha ao consultar o GitHub. Tente novamente mais tarde." }
-            runOnUiThread {
-                android.app.AlertDialog.Builder(this)
-                    .setTitle("Atualizações do Copiloto IA 99")
-                    .setMessage(message)
-                    .setNegativeButton("Fechar",null)
-                    .setPositiveButton("Abrir GitHub") { _,_ ->
-                        startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/jamillucio1993-create/copiloto-ia-99/releases")))
-                    }.show()
+                runOnUiThread {
+                    if (response == null) {
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("Atualizações")
+                            .setMessage("Nenhuma versão publicada disponível agora. Verifique a página oficial de Releases.")
+                            .setNegativeButton("Fechar", null)
+                            .setPositiveButton("Ver Releases") { _, _ -> openUpdateUrl("https://github.com/jamillucio1993-create/copiloto-ia-99/releases") }
+                            .show()
+                    } else {
+                        val tag = response.optString("tag_name")
+                        val current = packageManager.getPackageInfo(packageName, 0).versionName ?: "0"
+                        fun versionParts(s: String) = Regex("""\d+""").findAll(s).take(3).map { it.value.toIntOrNull() ?: 0 }.toList()
+                        val installed = versionParts(current)
+                        val published = versionParts(tag)
+                        val newer = published.isNotEmpty() && (0..2).firstOrNull {
+                            published.getOrElse(it) { 0 } != installed.getOrElse(it) { 0 }
+                        }?.let { published.getOrElse(it) { 0 } > installed.getOrElse(it) { 0 } } == true
+                        val assets = response.optJSONArray("assets")
+                        var apkUrl = ""
+                        if (assets != null) for (i in 0 until assets.length()) {
+                            val asset = assets.optJSONObject(i) ?: continue
+                            if (asset.optString("name").endsWith(".apk", ignoreCase = true)) {
+                                apkUrl = asset.optString("browser_download_url")
+                                break
+                            }
+                        }
+                        val releaseUrl = response.optString("html_url").takeIf { it.startsWith("https://github.com/") }
+                            ?: "https://github.com/jamillucio1993-create/copiloto-ia-99/releases"
+                        val message = if (newer) "Nova versão disponível: $tag\nInstalada: $current\n\nO Android solicitará sua confirmação para instalar."
+                            else "Versão instalada: $current\nÚltima publicada: $tag\n\nNenhuma atualização mais recente foi identificada."
+                        val dialog = android.app.AlertDialog.Builder(this)
+                            .setTitle("Atualização do Copiloto IA 99")
+                            .setMessage(message)
+                            .setNegativeButton("Fechar", null)
+                        if (newer && apkUrl.startsWith("https://github.com/")) {
+                            dialog.setPositiveButton("BAIXAR ATUALIZAÇÃO") { _, _ -> openUpdateUrl(apkUrl) }
+                        } else {
+                            dialog.setPositiveButton("VER RELEASES") { _, _ -> openUpdateUrl(releaseUrl) }
+                        }
+                        dialog.show()
+                    }
+                }
+            } catch (_: Exception) {
+                runOnUiThread {
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("Atualizações")
+                        .setMessage("Não foi possível consultar o GitHub. Verifique a internet e tente novamente.")
+                        .setPositiveButton("OK", null).show()
+                }
             }
         }.start()
+    }
+
+    private fun openUpdateUrl(url: String) {
+        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        catch (_: Exception) { Toast.makeText(this, "Não foi possível abrir o download.", Toast.LENGTH_LONG).show() }
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {

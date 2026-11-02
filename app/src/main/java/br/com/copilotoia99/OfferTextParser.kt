@@ -9,7 +9,13 @@ object OfferTextParser {
     private fun n(s: String) = s.replace(',', '.').toDoubleOrNull()
     fun parse(raw: String): ParsedOffer {
         val text = raw.replace('\u00a0', ' ')
-        val price = money.findAll(text).mapNotNull { it.groupValues[1].let(::n) }.firstOrNull()
+        // Prefer the fare shown on the offer card; ignore per-km and per-pickup prices.
+        val price = money.findAll(text).firstOrNull { match ->
+            val suffix = text.substring(match.range.last + 1,
+                (match.range.last + 22).coerceAtMost(text.length)).lowercase(Locale.ROOT)
+            !suffix.trimStart().startsWith("/km") &&
+                !suffix.contains("por embarque") && !suffix.contains("por km")
+        }?.groupValues?.get(1)?.let(::n)
         // A card may contain pickup and trip segments such as "4 min (887 m)" and "6 min (2 km)".
         val pair = Regex("""([0-9]+(?:[.,][0-9]+)?)\s*(?:minutos|mins|min)\s*\(?\s*([0-9]+(?:[.,][0-9]+)?)\s*(km|m)\b""", RegexOption.IGNORE_CASE)
         val segments = pair.findAll(text).mapNotNull { match ->

@@ -29,6 +29,9 @@ class MainActivity : Activity() {
     private lateinit var limits: DriverLimits
     private val prefs by lazy { getSharedPreferences("driver_limits",Context.MODE_PRIVATE) }
     private val pt = Locale("pt","BR")
+    private val sections = mutableListOf<LinearLayout>()
+    private lateinit var scroll: ScrollView
+    private lateinit var homePanel: LinearLayout
     private fun dp(n: Int): Int = (resources.displayMetrics.density*n).toInt()
     private val navy = Color.rgb(18, 38, 58)
     private val orange = Color.rgb(255, 153, 0)
@@ -72,6 +75,7 @@ class MainActivity : Activity() {
         }
         val p=LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(14) }
         root.addView(group,p); group.addView(text(title,18f,true).apply { setTextColor(navy) })
+        sections.add(group)
         return group
     }
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,7 +85,8 @@ class MainActivity : Activity() {
         store=OfferStore(this)
         limits=DriverLimits(prefs.getFloat("km",1.8f).toDouble(),prefs.getFloat("hour",35f).toDouble(),prefs.getFloat("fare",10f).toDouble(),prefs.getFloat("rating",4.7f).toDouble(),prefs.getFloat("pickupKm",8f).toDouble(),prefs.getFloat("pickupMin",15f).toDouble())
         val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(14),dp(16),dp(36)); setBackgroundColor(Color.rgb(244,247,250)) }
-        setContentView(ScrollView(this).apply { isFillViewport=true; clipToPadding=false; addView(root) })
+        scroll=ScrollView(this).apply { isFillViewport=true; clipToPadding=false; addView(root) }
+        setContentView(scroll)
         val hero=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(22),dp(20),dp(22)); background=rounded(navy); elevation=dp(3).toFloat() }
         root.addView(hero)
         hero.addView(text("🚘  COPILOTO IA 99",24f,true).apply { setTextColor(Color.WHITE) })
@@ -205,8 +210,40 @@ class MainActivity : Activity() {
         saved.addView(history)
         val privacy=card(root,"🔒  PRIVACIDADE E CONTROLE")
         privacy.addView(text("A leitura é experimental e pode não reconhecer todos os campos. A nota do passageiro não é extraída automaticamente. O Copiloto não aceita nem recusa corridas. Seus registros ficam no aparelho e podem ser apagados ao desinstalar.",14f))
+
+        // Home-first navigation: common actions first, advanced tools in Settings.
+        homePanel=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(16),dp(16),dp(16),dp(16))
+            background=rounded(Color.WHITE,Color.rgb(224,231,238))
+            elevation=dp(2).toFloat()
+        }
+        homePanel.addView(text("O QUE VOCÊ DESEJA FAZER?",17f,true).apply { setTextColor(navy) })
+        homePanel.addView(text("Acesse rapidamente as funções principais. As ferramentas avançadas ficam em Configurações.",14f))
+        button(homePanel,"🤖  ASSISTENTE AUTOMÁTICO") { showSections(2,3) }
+        button(homePanel,"🧮  ANALISAR UMA CORRIDA") { showSections(4) }
+        button(homePanel,"📊  MEU HISTÓRICO") { showSections(7) }
+        button(homePanel,"⚙️  CONFIGURAÇÕES E FERRAMENTAS") { showSections(0,1,5,6,8) }
+        root.addView(homePanel,3)
+        sections.forEach { section ->
+            section.visibility=View.GONE
+            button(section,"←  VOLTAR AO INÍCIO") { goHome() }
+        }
         refresh()
     }
+    private fun showSections(vararg indexes: Int) {
+        homePanel.visibility=View.GONE
+        sections.forEachIndexed { index, section ->
+            section.visibility=if(indexes.contains(index)) View.VISIBLE else View.GONE
+        }
+        scroll.post { scroll.smoothScrollTo(0,0) }
+    }
+    private fun goHome() {
+        sections.forEach { it.visibility=View.GONE }
+        homePanel.visibility=View.VISIBLE
+        scroll.post { scroll.smoothScrollTo(0,0) }
+    }
+
     private fun isAccessibilityServiceEnabled(): Boolean {
         val expected = "$packageName/${OfferAccessibilityService::class.java.name}"
         val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false

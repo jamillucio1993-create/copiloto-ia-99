@@ -180,6 +180,38 @@ class MainActivity : Activity() {
         button(accessibilityCard,"ATIVAR AUTOMAÇÃO NO ANDROID") {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
+        button(accessibilityCard,"TESTAR JANELA FLUTUANTE") {
+            if (!Settings.canDrawOverlays(this)) {
+                android.app.AlertDialog.Builder(this).setTitle("Permissão bloqueada")
+                    .setMessage("Permita Aparecer sobre outros apps para o Copiloto IA 99. Depois repita o teste.")
+                    .setPositiveButton("Abrir permissão") { _, _ ->
+                        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
+                    }.setNegativeButton("Cancelar",null).show()
+            } else {
+                try {
+                    val wm=getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
+                    val view=TextView(this).apply {
+                        text="COPILOTO IA 99 • Janela de teste funcionando"
+                        textSize=17f; setTextColor(Color.WHITE); gravity=Gravity.CENTER
+                        setPadding(dp(18),dp(18),dp(18),dp(18)); background=rounded(navy)
+                    }
+                    val params=android.view.WindowManager.LayoutParams(
+                        -2,-2,android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                        android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                        android.graphics.PixelFormat.TRANSLUCENT
+                    ).apply { gravity=Gravity.TOP or Gravity.CENTER_HORIZONTAL; y=dp(90) }
+                    wm.addView(view,params)
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        try { wm.removeView(view) } catch (_: Exception) {}
+                    },5000L)
+                } catch(e:Exception) {
+                    android.app.AlertDialog.Builder(this).setTitle("Falha na janela flutuante")
+                        .setMessage("Não foi possível exibir a janela: ${e.javaClass.simpleName}")
+                        .setPositiveButton("OK",null).show()
+                }
+            }
+        }
         button(accessibilityCard,"VERIFICAR STATUS") {
             accessibilityStatus.text=if(isAccessibilityServiceEnabled()) "Acessibilidade: ativada" else "Acessibilidade: desativada"
             val status=getSharedPreferences("accessibility_status",Context.MODE_PRIVATE)

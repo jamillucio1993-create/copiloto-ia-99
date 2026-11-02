@@ -29,6 +29,26 @@ class OfferAccessibilityService : AccessibilityService() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val clearExpired = Runnable { hideOverlay() }
     private var last99EventAt = 0L
+    private var is99Foreground = false
+    private var lastConnectionPopupAt = 0L
+    private fun on99Foreground() {
+        if (is99Foreground) return
+        is99Foreground = true
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastConnectionPopupAt < 1500L) return
+        lastConnectionPopupAt = now
+        publish("99 detectada • janela de conexão exibida")
+        showOverlay("✓ COPILOTO CONECTADO À 99 • aguardando oferta", "CONEXAO")
+    }
+
+    private fun on99Background() {
+        if (!is99Foreground) return
+        is99Foreground = false
+        mainHandler.removeCallbacks(clearExpired)
+        hideOverlay()
+        publish("99 saiu do primeiro plano • janela recolhida")
+    }
+
     private fun mark99Detected(pkg: String) {
         getSharedPreferences("accessibility_status", MODE_PRIVATE).edit()
             .putLong("last_99_seen_at", System.currentTimeMillis())
@@ -47,10 +67,12 @@ class OfferAccessibilityService : AccessibilityService() {
                 try { collectText(root, out, 0) } finally { root.recycle() }
                 if (pkg.contains("99") || pkg.contains("didi")) {
                     mark99Detected(pkg)
+                    on99Foreground()
                     if (out.contains("buscando viagens", true) || out.contains("procurando viagens", true)) clearOffer()
                     else if (!processOffer(out.toString(), "acessibilidade") && (pendingFingerprint == null || SystemClock.elapsedRealtime() - pendingAt > 1200L)) requestScreenshot()
                     mainHandler.postDelayed(this, 700L)
                 } else {
+                    on99Background()
                     clearOffer()
                     mainHandler.postDelayed(this, 1500L)
                 }
@@ -90,12 +112,14 @@ class OfferAccessibilityService : AccessibilityService() {
         val pkg = event.packageName?.toString()?.lowercase(Locale.ROOT) ?: return
         if (pkg == packageName.lowercase(Locale.ROOT)) return
         if (!pkg.contains("99") && !pkg.contains("didi")) {
+            on99Background()
             clearOffer()
             mainHandler.removeCallbacks(poller)
             mainHandler.postDelayed(poller, 1500L)
             return
         }
         mark99Detected(pkg)
+        on99Foreground()
         last99EventAt = SystemClock.elapsedRealtime()
         mainHandler.removeCallbacks(poller)
         mainHandler.postDelayed(poller, 700L)
@@ -345,20 +369,22 @@ class OfferAccessibilityService : AccessibilityService() {
             visibility = android.view.View.VISIBLE
             text = message
             setBackgroundColor(when (verdict) {
+                "CONEXAO" -> 0xE51B557C.toInt()
                 "EXCELENTE", "BOA" -> 0xE51B873D.toInt()
                 "REGULAR" -> 0xE5C58A12.toInt()
                 "RUIM" -> 0xE5B4232C.toInt()
                 else -> 0xE51C2732.toInt()
             })
         }
-        publish("Janela automática exibida: $verdict")
+        if (verdict != "CONEXAO") publish("Janela automática exibida: $verdict")
         // Keep the result readable while the offer continues to be detected.
         overlayVisibleUntil = SystemClock.elapsedRealtime() + 8000L
         mainHandler.removeCallbacks(clearExpired)
-        mainHandler.postDelayed(clearExpired, 8000L)
+        if (verdict != "CONEXAO") mainHandler.postDelayed(clearExpired, 8000L)
     }
 
     override fun onInterrupt() {
+        on99Background()
         getSharedPreferences("accessibility_status", MODE_PRIVATE).edit().putBoolean("service_connected", false).apply()
         publish("Acessibilidade interrompida")
     }

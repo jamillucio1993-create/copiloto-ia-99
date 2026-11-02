@@ -57,6 +57,7 @@ class OfferAccessibilityService : AccessibilityService() {
     }
 
     private var lastReadStartedAt = 0L
+    private var lastRawFingerprint = ""
     private val poller = object : Runnable {
         override fun run() {
             val root = rootInActiveWindow
@@ -64,13 +65,13 @@ class OfferAccessibilityService : AccessibilityService() {
                 lastReadStartedAt = SystemClock.elapsedRealtime()
                 val pkg = root.packageName?.toString()?.lowercase(Locale.ROOT) ?: ""
                 val out = StringBuilder()
-                try { collectText(root, out, 0) } finally { root.recycle() }
+                try { if (pkg.contains("99") || pkg.contains("didi")) collectText(root, out, 0) } finally { root.recycle() }
                 if (pkg.contains("99") || pkg.contains("didi")) {
                     mark99Detected(pkg)
                     on99Foreground()
                     if (out.contains("buscando viagens", true) || out.contains("procurando viagens", true)) clearOffer()
-                    else if (!processOffer(out.toString(), "acessibilidade") && (pendingFingerprint == null || SystemClock.elapsedRealtime() - pendingAt > 1200L)) requestScreenshot()
-                    mainHandler.postDelayed(this, 700L)
+                    else if (out.isNotEmpty() && !processOffer(out.toString(), "acessibilidade") && (pendingFingerprint == null || SystemClock.elapsedRealtime() - pendingAt > 700L)) requestScreenshot()
+                    mainHandler.postDelayed(this, 350L)
                 } else {
                     on99Background()
                     clearOffer()
@@ -78,7 +79,7 @@ class OfferAccessibilityService : AccessibilityService() {
                 }
             } else if (SystemClock.elapsedRealtime() - last99EventAt < 10000L) {
                 // A transient null window must not permanently stop monitoring.
-                mainHandler.postDelayed(this, 700L)
+                mainHandler.postDelayed(this, 350L)
             } else {
                 // Continue checking for the 99 app even if no event arrived yet.
                 mainHandler.postDelayed(this, 1500L)
@@ -104,7 +105,7 @@ class OfferAccessibilityService : AccessibilityService() {
         getSharedPreferences("accessibility_status", MODE_PRIVATE).edit().putBoolean("service_connected", true).apply()
         diagnostic("Acessibilidade ativa • aguardando oferta")
         mainHandler.removeCallbacks(poller)
-        mainHandler.postDelayed(poller, 700L)
+        mainHandler.postDelayed(poller, 250L)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -122,7 +123,7 @@ class OfferAccessibilityService : AccessibilityService() {
         on99Foreground()
         last99EventAt = SystemClock.elapsedRealtime()
         mainHandler.removeCallbacks(poller)
-        mainHandler.postDelayed(poller, 700L)
+        mainHandler.postDelayed(poller, 250L)
         if (event.eventType !in intArrayOf(
                 AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
@@ -144,12 +145,12 @@ class OfferAccessibilityService : AccessibilityService() {
         if (raw.contains("buscando viagens", true) || raw.contains("procurando viagens", true)) { clearOffer(); return }
         if (raw.isNotBlank() && processOffer(raw, "acessibilidade")) return
         // A complete offer awaiting its second reading is not an OCR failure.
-        if (pendingFingerprint == null || SystemClock.elapsedRealtime() - pendingAt > 1200L) requestScreenshot()
+        if (pendingFingerprint == null || SystemClock.elapsedRealtime() - pendingAt > 700L) requestScreenshot()
     }
 
     private fun requestScreenshot() {
         val now = SystemClock.elapsedRealtime()
-        if (screenshotBusy || now - lastScreenshotAt < 1000L) return
+        if (screenshotBusy || now - lastScreenshotAt < 650L) return
         lastReadStartedAt = now
         lastScreenshotAt = now
         screenshotBusy = true
@@ -247,7 +248,7 @@ class OfferAccessibilityService : AccessibilityService() {
             publish("Oferta identificada • aguardando confirmação")
             return false
         }
-        if (now - pendingAt < 250L) return true
+        if (now - pendingAt < 120L) return true
         if (fingerprint == lastFingerprint && now - lastPublishedAt < 8000L) {
             lastOfferConfirmedAt = now
             if (overlay != null && overlay?.visibility != android.view.View.VISIBLE) {

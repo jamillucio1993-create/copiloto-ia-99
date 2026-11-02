@@ -3,12 +3,8 @@ package br.com.copilotoia99
 import android.app.Activity
 import android.os.Bundle
 import android.content.Intent
-import android.media.projection.MediaProjectionManager
 import android.provider.Settings
 import android.net.Uri
-import android.os.Build
-import android.content.pm.PackageManager
-import android.Manifest
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
@@ -19,8 +15,6 @@ import android.widget.*
 import java.util.Locale
 
 class MainActivity : Activity() {
-    private val captureRequest=1201
-    private lateinit var captureStatus: TextView
     private lateinit var store: OfferStore
     private lateinit var result: TextView
     private lateinit var history: TextView
@@ -176,25 +170,11 @@ class MainActivity : Activity() {
             }
         }
         recorderCard.addView(text("Revise o texto antes de compartilhar. O envio só ocorre após você escolher o destino e confirmar no aplicativo escolhido. Nenhuma API ou servidor externo está conectado.",12f))
-        val monitor=card(root,"MONITOR DE OFERTAS • A54")
-        monitor.addView(text("Inicie a captura apenas com autorização do Android. A leitura de ofertas é experimental. Não interage com os botões da 99.",13f))
-        captureStatus=text("Captura desativada",15f,true)
-        button(monitor,"1. PERMITIR JANELA FLUTUANTE") {
-            if(!Settings.canDrawOverlays(this))startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))
-            else captureStatus.text="Janela flutuante já permitida"
-        }
-        button(monitor,"2. INICIAR CAPTURA AUTORIZADA") {
-            if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS),100)
-            val mgr=getSystemService(MediaProjectionManager::class.java)
-            startActivityForResult(mgr.createScreenCaptureIntent(),captureRequest)
-        }
-        button(monitor,"PARAR MONITORAMENTO") { startService(Intent(this,CaptureService::class.java).setAction(CaptureService.ACTION_STOP));captureStatus.text="Monitoramento encerrado" }
-        monitor.addView(captureStatus)
         val accessibilityCard=card(root,"🤖  ASSISTENTE AUTOMÁTICO")
         accessibilityCard.addView(text("Recomendado • Sem gravação contínua. O Android permite que o Copiloto leia o texto visível de ofertas compatíveis no app 99. Você continua no controle: ele não aceita nem recusa corridas.",15f))
         val accessibilityStatus=text(if(isAccessibilityServiceEnabled()) "Acessibilidade: ativada" else "Acessibilidade: desativada",14f,true)
         accessibilityCard.addView(accessibilityStatus)
-        button(accessibilityCard,"ATIVAR AUTOMAÇÃO NO ANDROID") {
+        button(accessibilityCard,"PERMITIR JANELA FLUTUANTE") {\n            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:$packageName")))\n        }\n        button(accessibilityCard,"ATIVAR AUTOMAÇÃO NO ANDROID") {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
         button(accessibilityCard,"VERIFICAR STATUS") {
@@ -260,7 +240,7 @@ class MainActivity : Activity() {
         button(saved,"RECARREGAR HISTÓRICO") { refresh() }
         saved.addView(history)
         val privacy=card(root,"🔒  PRIVACIDADE E CONTROLE")
-        privacy.addView(text("A leitura é experimental e pode não reconhecer todos os campos. A nota do passageiro não é extraída automaticamente. O Copiloto não aceita nem recusa corridas. Seus registros ficam no aparelho e podem ser apagados ao desinstalar.",14f))
+        privacy.addView(text("A leitura é experimental e pode não reconhecer todos os campos. A nota do passageiro só é usada quando a 99 disponibiliza esse dado na acessibilidade. O Copiloto não aceita nem recusa corridas. Seus registros ficam no aparelho e podem ser apagados ao desinstalar.",14f))
 
         // Home-first navigation: common actions first, advanced tools in Settings.
         homePanel=LinearLayout(this).apply {
@@ -271,10 +251,10 @@ class MainActivity : Activity() {
         }
         homePanel.addView(text("O QUE VOCÊ DESEJA FAZER?",17f,true).apply { setTextColor(navy) })
         homePanel.addView(text("Acesse rapidamente as funções principais. As ferramentas avançadas ficam em Configurações.",14f))
-        button(homePanel,"🤖  ASSISTENTE AUTOMÁTICO") { showSections(2,3) }
-        button(homePanel,"🧮  ANALISAR UMA CORRIDA") { showSections(4) }
-        button(homePanel,"📊  MEU HISTÓRICO") { showSections(7) }
-        button(homePanel,"⚙️  CONFIGURAÇÕES E FERRAMENTAS") { showSections(0,1,5,6,8) }
+        button(homePanel,"🤖  ASSISTENTE AUTOMÁTICO") { showSections(2) }
+        button(homePanel,"🧮  ANALISAR UMA CORRIDA") { showSections(3) }
+        button(homePanel,"📊  MEU HISTÓRICO") { showSections(6) }
+        button(homePanel,"⚙️  CONFIGURAÇÕES E FERRAMENTAS") { showSections(0,1,4,5,7) }
         button(homePanel,"🔄  VERIFICAR ATUALIZAÇÕES") { checkForUpdates() }
         root.addView(homePanel,3)
         sections.forEach { section ->
@@ -373,14 +353,6 @@ class MainActivity : Activity() {
         return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
     }
 
-    @Deprecated("Activity result API is retained for minimal dependency prototype")
-    override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){
-        super.onActivityResult(requestCode,resultCode,data)
-        if(requestCode==captureRequest&&resultCode==RESULT_OK&&data!=null){
-            val intent=Intent(this,CaptureService::class.java).putExtra(CaptureService.EXTRA_RESULT_CODE,resultCode).putExtra(CaptureService.EXTRA_DATA,data)
-            try{startForegroundService(intent);captureStatus.text="Captura iniciada com consentimento"}catch(e:Exception){captureStatus.text="Erro ao iniciar: ${e.message}"}
-        }
-    }
     private fun refresh() {
         if(!::history.isInitialized)return
         val all=store.all()

@@ -45,6 +45,7 @@ class OfferAccessibilityService : AccessibilityService() {
         if (!is99Foreground) return
         is99Foreground = false
         mainHandler.removeCallbacks(clearExpired)
+        captureSequence++
         hideOverlay()
         publish("99 saiu do primeiro plano • janela recolhida")
     }
@@ -59,6 +60,8 @@ class OfferAccessibilityService : AccessibilityService() {
     private var lastReadStartedAt = 0L
     private var lastRawFingerprint = ""
     private var screenGeneration = 0L
+    private var captureSequence = 0L
+    private var consecutiveOcrFailures = 0
     private var lastAccessibleText = ""
     private var lastAccessibleAt = 0L
     private var lastOcrText = ""
@@ -157,12 +160,13 @@ class OfferAccessibilityService : AccessibilityService() {
         lastScreenshotAt = now
         screenshotBusy = true
         val capturedGeneration = screenGeneration
+        val capturedSequence = ++captureSequence
         val previousOverlayVisibility = overlay?.visibility
         val previousListVisibility = listOverlays.map { it.visibility }
         overlay?.visibility = android.view.View.GONE
         listOverlays.forEach { it.visibility = android.view.View.GONE }
         fun restoreOverlays() {
-            if (!is99Foreground || capturedGeneration != screenGeneration) return
+            if (!is99Foreground || capturedGeneration != screenGeneration || capturedSequence != captureSequence) return
             previousOverlayVisibility?.let { overlay?.visibility = it }
             listOverlays.forEachIndexed { index, view ->
                 previousListVisibility.getOrNull(index)?.let { view.visibility = it }
@@ -189,7 +193,8 @@ class OfferAccessibilityService : AccessibilityService() {
                     }
                     recognizer.process(InputImage.fromBitmap(bitmap, 0))
                         .addOnSuccessListener { recognized ->
-                            if (capturedGeneration != screenGeneration || !is99Foreground) return@addOnSuccessListener
+                            if (capturedGeneration != screenGeneration || capturedSequence != captureSequence || !is99Foreground) return@addOnSuccessListener
+                            consecutiveOcrFailures = 0
                             val ocrNow = SystemClock.elapsedRealtime()
                             if (recognized.text == lastOcrText && ocrNow - lastOcrAt < 1200L) return@addOnSuccessListener
                             lastOcrText = recognized.text
@@ -206,7 +211,10 @@ class OfferAccessibilityService : AccessibilityService() {
                                     diagnostic("99 detectada • leitura incompleta")
                             }
                         }
-                        .addOnFailureListener { diagnostic("OCR não conseguiu ler a oferta") }
+                        .addOnFailureListener {
+                            consecutiveOcrFailures++
+                            diagnostic("Falha no reconhecimento OCR • tentativas: $consecutiveOcrFailures")
+                        }
                         .addOnCompleteListener {
                             bitmap.recycle()
                             screenshotBusy = false
@@ -216,13 +224,15 @@ class OfferAccessibilityService : AccessibilityService() {
                 override fun onFailure(errorCode: Int) {
                     screenshotBusy = false
                     restoreOverlays()
-                    diagnostic("Captura de acessibilidade indisponível (código $errorCode)")
+                    consecutiveOcrFailures++
+                    diagnostic("Falha na captura da tela • código $errorCode • tentativas: $consecutiveOcrFailures")
                 }
             })
         } catch (_: Exception) {
             screenshotBusy = false
             restoreOverlays()
-            diagnostic("Não foi possível capturar a oferta")
+            consecutiveOcrFailures++
+            diagnostic("Falha ao iniciar captura • tentativas: $consecutiveOcrFailures")
         }
     }
 
@@ -381,6 +391,7 @@ class OfferAccessibilityService : AccessibilityService() {
 
     private fun clearOffer() {
         screenGeneration++
+        captureSequence++
         lastAccessibleText = ""
         hideOverlay()
         lastFingerprint = ""

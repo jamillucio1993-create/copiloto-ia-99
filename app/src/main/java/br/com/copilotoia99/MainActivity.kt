@@ -129,19 +129,74 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun openCheckSettings(label: String) {
+        val intent = when (label) {
+            "Acessibilidade" -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            "Janela flutuante" -> Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName"))
+            "Localização" -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$packageName"))
+            "Notificações" -> Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+            else -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$packageName"))
+        }
+        try { startActivity(intent) } catch (_: Exception) {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$packageName")))
+        }
+    }
+
     private fun showDeviceDiagnostics() {
         val checks = DeviceHealthCheck.run(this)
-        val requiredOk = checks.filter { it.required }.all { it.passed }
-        val report = checks.joinToString("\n\n") { check ->
-            (if (check.passed) "✓ " else if (check.required) "✗ " else "• ") + check.label + ": " + check.detail
+        val pending = checks.filter { !it.passed }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(12), dp(18), dp(12))
         }
-        android.app.AlertDialog.Builder(this)
-            .setTitle(if (requiredOk) "Copiloto • configuração básica pronta" else "Copiloto • configuração pendente")
-            .setMessage(report + "\n\nO reconhecimento real das ofertas só pode ser validado durante o uso da 99.")
-            .setPositiveButton("Entendi", null)
+        val status = TextView(this).apply {
+            text = "Iniciando verificação..."
+            textSize = 17f
+            setTextColor(ink)
+            setPadding(0, dp(8), 0, dp(12))
+        }
+        root.addView(status)
+        val rows = checks.map { check ->
+            TextView(this).apply {
+                text = "○ Verificando: ${check.label}"
+                textSize = 15f
+                setTextColor(muted)
+                setPadding(dp(8), dp(10), dp(8), dp(10))
+                root.addView(this)
+            }
+        }
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Diagnóstico do Copiloto")
+            .setView(ScrollView(this).apply { addView(root) })
+            .setPositiveButton("Concluir", null)
             .setNeutralButton("Verificar novamente") { _, _ -> showDeviceDiagnostics() }
-            .setNegativeButton("Abrir acessibilidade") { _, _ -> startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-            .show()
+            .create()
+        dialog.show()
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        checks.forEachIndexed { index, check ->
+            handler.postDelayed({
+                if (!dialog.isShowing) return@postDelayed
+                rows[index].apply {
+                    text = (if (check.passed) "✓ " else "✗ ") + check.label + ": " + check.detail +
+                        (if (!check.passed) "\\nTOQUE PARA CORRIGIR" else "")
+                    setTextColor(if (check.passed) Color.rgb(22, 125, 66) else Color.rgb(190, 35, 42))
+                    if (!check.passed) {
+                        setBackgroundColor(Color.rgb(255, 238, 238))
+                        setOnClickListener { openCheckSettings(check.label) }
+                    }
+                }
+                if (index == checks.lastIndex) {
+                    status.text = if (pending.isEmpty()) "✓ Configurações verificadas. Teste real da 99 ainda necessário." else
+                        "✗ ${pending.size} pendência(s). Toque no item vermelho para corrigir."
+                    status.setTextColor(if (pending.isEmpty()) Color.rgb(22, 125, 66) else Color.rgb(190, 35, 42))
+                }
+            }, 160L * (index + 1))
+        }
     }
 
     override fun onResume() {

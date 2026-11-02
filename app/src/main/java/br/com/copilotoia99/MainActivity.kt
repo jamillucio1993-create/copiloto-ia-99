@@ -1,5 +1,8 @@
 package br.com.copilotoia99
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.app.Activity
 import android.os.Bundle
 import android.content.Intent
@@ -114,6 +117,9 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor=navy
         window.navigationBarColor=navy
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
+        }
         store=OfferStore(this)
         limits=DriverLimits(prefs.getFloat("km",1.8f).toDouble(),prefs.getFloat("hour",35f).toDouble(),prefs.getFloat("fare",10f).toDouble(),prefs.getFloat("rating",4.7f).toDouble(),prefs.getFloat("pickupKm",8f).toDouble(),prefs.getFloat("pickupMin",15f).toDouble())
         val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(14),dp(16),dp(36)); setBackgroundColor(Color.rgb(244,247,250)) }
@@ -215,7 +221,10 @@ class MainActivity : Activity() {
         button(accessibilityCard,"VERIFICAR STATUS") {
             accessibilityStatus.text=if(isAccessibilityServiceEnabled()) "Acessibilidade: ativada" else "Acessibilidade: desativada"
             val status=getSharedPreferences("accessibility_status",Context.MODE_PRIVATE)
-            val details="Janela flutuante: "+(if(Settings.canDrawOverlays(this)) "permitida" else "bloqueada")+
+            val notifications = if (Build.VERSION.SDK_INT >= 33) {
+                if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) "permitidas" else "bloqueadas"
+            } else "permissão não exigida"
+            val details="Notificações: "+notifications+"\nAcessibilidade: "+(if(isAccessibilityServiceEnabled()) "ativa" else "inativa")+"\nJanela flutuante: "+(if(Settings.canDrawOverlays(this)) "permitida" else "bloqueada")+
                 "\nÚltimo estado: "+status.getString("last_status","Nenhuma leitura")+
                 "\nOrigem: "+status.getString("last_source","Não identificada")+
                 "\nLatência: "+status.getLong("last_latency_ms",-1L)+" ms"

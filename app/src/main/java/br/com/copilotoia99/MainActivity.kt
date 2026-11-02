@@ -140,6 +140,7 @@ class MainActivity : Activity() {
             .setMessage(report + "\n\nO reconhecimento real das ofertas só pode ser validado durante o uso da 99.")
             .setPositiveButton("Entendi", null)
             .setNeutralButton("Verificar novamente") { _, _ -> showDeviceDiagnostics() }
+            .setNegativeButton("Abrir acessibilidade") { _, _ -> startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
             .show()
     }
 

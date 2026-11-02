@@ -30,39 +30,65 @@ class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("driver_limits",Context.MODE_PRIVATE) }
     private val pt = Locale("pt","BR")
     private fun dp(n: Int): Int = (resources.displayMetrics.density*n).toInt()
-    private fun text(value: String, size: Float=15f, bold: Boolean=false): TextView = TextView(this).apply {
-        text=value; textSize=size; setTextColor(Color.rgb(28,35,45)); if(bold) setTypeface(null,Typeface.BOLD)
-        setPadding(0,dp(6),0,dp(6))
+    private val navy = Color.rgb(18, 38, 58)
+    private val orange = Color.rgb(255, 153, 0)
+    private val ink = Color.rgb(27, 39, 51)
+    private val muted = Color.rgb(91, 105, 120)
+    private fun rounded(color: Int, stroke: Int = Color.TRANSPARENT): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            setColor(color); cornerRadius=dp(18).toFloat()
+            if(stroke != Color.TRANSPARENT) setStroke(dp(1),stroke)
+        }
+    private fun text(value: String, size: Float=16f, bold: Boolean=false): TextView = TextView(this).apply {
+        text=value; textSize=size; setTextColor(if(size<=13f) muted else ink)
+        if(bold) setTypeface(null,Typeface.BOLD)
+        setPadding(0,dp(7),0,dp(7)); setLineSpacing(dp(2).toFloat(),1.0f)
     }
     private fun input(root: LinearLayout, label: String, initial: String, numeric: Boolean=true): EditText {
         root.addView(text(label,14f,true))
         return EditText(this).apply {
-            setText(initial); setSingleLine(true); textSize=18f; minHeight=dp(48)
+            setText(initial); setSingleLine(true); textSize=18f; minHeight=dp(54)
+            setPadding(dp(14),dp(8),dp(14),dp(8))
+            setTextColor(ink); setHintTextColor(muted); background=rounded(Color.WHITE,Color.rgb(205,215,225))
             if(numeric) inputType=InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             else inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            contentDescription=label
             root.addView(this)
         }
     }
     private fun parse(e: EditText): Double = e.text.toString().trim().replace(',','.').toDouble()
     private fun button(root: LinearLayout, title: String, action: ()->Unit) {
-        root.addView(Button(this).apply { text=title; minHeight=dp(52); setOnClickListener { action() } })
+        root.addView(Button(this).apply {
+            text=title; isAllCaps=false; textSize=15f; setTextColor(Color.WHITE)
+            typeface=Typeface.DEFAULT_BOLD; minHeight=dp(56); setPadding(dp(16),dp(10),dp(16),dp(10))
+            background=rounded(navy); contentDescription=title; stateListAnimator=null
+            setOnClickListener { action() }
+        }, LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(8) })
     }
     private fun card(root: LinearLayout, title: String): LinearLayout {
-        val group=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(14),dp(12),dp(14),dp(12)); setBackgroundColor(Color.rgb(241,245,249)) }
-        val p=LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) }
-        root.addView(group,p); group.addView(text(title,18f,true)); return group
+        val group=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(16))
+            background=rounded(Color.WHITE,Color.rgb(224,231,238)); elevation=dp(2).toFloat()
+        }
+        val p=LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(14) }
+        root.addView(group,p); group.addView(text(title,18f,true).apply { setTextColor(navy) })
+        return group
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor=Color.rgb(16,33,49)
-        window.navigationBarColor=Color.rgb(16,33,49)
+        window.statusBarColor=navy
+        window.navigationBarColor=navy
         store=OfferStore(this)
         limits=DriverLimits(prefs.getFloat("km",1.8f).toDouble(),prefs.getFloat("hour",35f).toDouble(),prefs.getFloat("fare",10f).toDouble(),prefs.getFloat("rating",4.7f).toDouble(),prefs.getFloat("pickupKm",8f).toDouble(),prefs.getFloat("pickupMin",15f).toDouble())
-        val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(18),dp(16),dp(18),dp(36)); setBackgroundColor(Color.WHITE) }
-        setContentView(ScrollView(this).apply { isFillViewport=true; addView(root) })
-        root.addView(text("COPILOTO IA 99",25f,true))
-        root.addView(text("Samsung Galaxy A54 • modo local e offline • sem vínculo com a 99",12f))
-        root.addView(text("A automação por acessibilidade pode ler ofertas compatíveis sem gravação contínua da tela. A captura autorizada continua disponível como alternativa.",13f))
+        val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(14),dp(16),dp(36)); setBackgroundColor(Color.rgb(244,247,250)) }
+        setContentView(ScrollView(this).apply { isFillViewport=true; clipToPadding=false; addView(root) })
+        val hero=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(22),dp(20),dp(22)); background=rounded(navy); elevation=dp(3).toFloat() }
+        root.addView(hero)
+        hero.addView(text("🚘  COPILOTO IA 99",24f,true).apply { setTextColor(Color.WHITE) })
+        hero.addView(text("Decida melhor. Rode com mais consciência.",15f).apply { setTextColor(Color.rgb(226,235,244)) })
+        hero.addView(text("Análise de corridas • Privacidade no aparelho • Você decide se aceita",12f).apply { setTextColor(Color.rgb(205,218,230)) })
+        root.addView(text("SEU PAINEL",12f,true).apply { setTextColor(orange); setPadding(dp(2),dp(16),0,0) })
+        root.addView(text("Escolha uma ação para começar.",16f,true))
         val evolution=EvolutionEngine(this)
         val evoCard=card(root,"COPILOTO EVOLUTION • v1.1")
         val evoStatus=text(if(evolution.enabled()) "Compartilhamento de diagnósticos: autorizado" else "Compartilhamento de diagnósticos: desligado",13f)
@@ -108,8 +134,8 @@ class MainActivity : Activity() {
         }
         button(monitor,"PARAR MONITORAMENTO") { startService(Intent(this,CaptureService::class.java).setAction(CaptureService.ACTION_STOP));captureStatus.text="Monitoramento encerrado" }
         monitor.addView(captureStatus)
-        val accessibilityCard=card(root,"AUTOMAÇÃO POR ACESSIBILIDADE")
-        accessibilityCard.addView(text("Sem gravação de tela. O Android permite que o Copiloto leia o texto visível de ofertas compatíveis no app 99. Não aceita nem recusa corridas.",13f))
+        val accessibilityCard=card(root,"🤖  ASSISTENTE AUTOMÁTICO")
+        accessibilityCard.addView(text("Recomendado • Sem gravação contínua. O Android permite que o Copiloto leia o texto visível de ofertas compatíveis no app 99. Você continua no controle: ele não aceita nem recusa corridas.",15f))
         val accessibilityStatus=text(if(isAccessibilityServiceEnabled()) "Acessibilidade: ativada" else "Acessibilidade: desativada",14f,true)
         accessibilityCard.addView(accessibilityStatus)
         button(accessibilityCard,"ATIVAR AUTOMAÇÃO NO ANDROID") {
@@ -119,7 +145,8 @@ class MainActivity : Activity() {
             accessibilityStatus.text=if(isAccessibilityServiceEnabled()) "Acessibilidade: ativada" else "Acessibilidade: desativada"
         }
 
-        val offer=card(root,"Analisar oferta manualmente")
+        val offer=card(root,"✍️  ANÁLISE MANUAL")
+        offer.addView(text("Preencha os dados da oferta para receber uma avaliação rápida.",14f))
         val price=input(offer,"Valor da corrida (R$)","30")
         val pickupKm=input(offer,"Embarque — distância (km)","2")
         val tripKm=input(offer,"Viagem — distância (km)","10")
@@ -141,7 +168,7 @@ class MainActivity : Activity() {
             } catch(e:Exception) { result.text="Revise os valores. Distâncias e tempos não podem ser negativos." }
         }
         offer.addView(result)
-        val learn=card(root,"Aprendizado local (dados observados)")
+        val learn=card(root,"📍  APRENDIZADO POR REGIÃO")
         learn.addView(text("Após uma corrida, informe a espera real por outra chamada naquela região. Isso atualiza o modelo local gradualmente.",13f))
         observed=input(learn,"Espera real observada (0 a 240 min)","12")
         val learningResult=text("",13f)
@@ -154,7 +181,7 @@ class MainActivity : Activity() {
             } catch(e:Exception) { learningResult.text="Informe região e espera real válida." }
         }
         learn.addView(learningResult)
-        val settings=card(root,"Limites obrigatórios")
+        val settings=card(root,"⚙️  SEUS LIMITES DE GANHO")
         val minKm=input(settings,"Mínimo R$/km",limits.minPerKm.toString())
         val minHour=input(settings,"Mínimo R$/hora",limits.minPerHour.toString())
         val minFare=input(settings,"Valor mínimo R$",limits.minFare.toString())
@@ -172,11 +199,12 @@ class MainActivity : Activity() {
             } catch(e:Exception) { settingsResult.text="Limites inválidos; nenhuma alteração foi salva." }
         }
         settings.addView(settingsResult)
-        val saved=card(root,"Histórico privado")
+        val saved=card(root,"📊  HISTÓRICO DE CORRIDAS")
         history=text("",13f)
         button(saved,"RECARREGAR HISTÓRICO") { refresh() }
         saved.addView(history)
-        root.addView(text("Protótipo de captura experimental: o reconhecimento pode falhar ou confundir campos. A nota do passageiro não é extraída automaticamente. Sem aceite automático, sem nuvem. Dados podem ser perdidos ao desinstalar.",12f))
+        val privacy=card(root,"🔒  PRIVACIDADE E CONTROLE")
+        privacy.addView(text("A leitura é experimental e pode não reconhecer todos os campos. A nota do passageiro não é extraída automaticamente. O Copiloto não aceita nem recusa corridas. Seus registros ficam no aparelho e podem ser apagados ao desinstalar.",14f))
         refresh()
     }
     private fun isAccessibilityServiceEnabled(): Boolean {

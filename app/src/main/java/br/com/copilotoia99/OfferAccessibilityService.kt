@@ -145,7 +145,10 @@ class OfferAccessibilityService : AccessibilityService() {
                             else if (valid.size > 1) {
                                 clearOffer()
                                 diagnostic("Múltiplas ofertas • selecione uma")
-                            } else diagnostic("99 detectada • leitura incompleta")
+                            } else {
+                                val combined = recognized.text
+                                if (!processOffer(combined, "OCR tela inteira")) diagnostic("99 detectada • leitura incompleta")
+                            }
                         }
                         .addOnFailureListener { diagnostic("OCR não conseguiu ler a oferta") }
                         .addOnCompleteListener {
@@ -204,13 +207,13 @@ class OfferAccessibilityService : AccessibilityService() {
         }
         val fingerprint = "${parsed.price}:${parsed.pickupKm}:${parsed.tripKm}:${parsed.pickupMinutes}:${parsed.tripMinutes}:${parsed.rating}"
         val now = SystemClock.elapsedRealtime()
-        if (fingerprint != pendingFingerprint || now - pendingAt > 3500L) {
+        if (fingerprint != pendingFingerprint || now - pendingAt > 6000L) {
             pendingFingerprint = fingerprint
             pendingAt = now
             publish("Oferta identificada • aguardando confirmação")
             return false
         }
-        if (now - pendingAt < 250L) return false
+        if (now - pendingAt < 250L) return true
         if (fingerprint == lastFingerprint && now - lastPublishedAt < 8000L) {
             lastOfferConfirmedAt = now
             return true

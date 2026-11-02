@@ -64,7 +64,7 @@ class OfferAccessibilityService : AccessibilityService() {
         val offer = OfferInput(
             parsed.price!!, parsed.pickupKm!!, parsed.tripKm!!,
             parsed.pickupMinutes!!, parsed.tripMinutes!!,
-            parsed.rating ?: 0.0, "Desconhecida"
+            parsed.rating ?: 4.7, "Desconhecida"
         )
         val prefs = getSharedPreferences("driver_limits", MODE_PRIVATE)
         val limits = DriverLimits(

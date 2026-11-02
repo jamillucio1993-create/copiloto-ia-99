@@ -27,6 +27,23 @@ import java.util.Locale
 class OfferAccessibilityService : AccessibilityService() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val clearExpired = Runnable { clearOffer() }
+    private var last99EventAt = 0L
+    private var lastReadStartedAt = 0L
+    private val poller = object : Runnable {
+        override fun run() {
+            if (SystemClock.elapsedRealtime() - last99EventAt > 6000L) return
+            val root = rootInActiveWindow
+            if (root != null) {
+                val pkg = root.packageName?.toString()?.lowercase(Locale.ROOT) ?: ""
+                val out = StringBuilder()
+                try { collectText(root, out, 0) } finally { root.recycle() }
+                if (pkg.contains("99") || pkg.contains("didi")) {
+                    if (!processOffer(out.toString(), "acessibilidade")) requestScreenshot()
+                }
+            }
+            mainHandler.postDelayed(this, 700L)
+        }
+    }
     private var lastOfferConfirmedAt = 0L
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private var lastFingerprint = ""
@@ -48,6 +65,9 @@ class OfferAccessibilityService : AccessibilityService() {
         val pkg = event.packageName?.toString()?.lowercase(Locale.ROOT) ?: return
         if (pkg == packageName.lowercase(Locale.ROOT)) return
         if (!pkg.contains("99") && !pkg.contains("didi")) return
+        last99EventAt = SystemClock.elapsedRealtime()
+        mainHandler.removeCallbacks(poller)
+        mainHandler.postDelayed(poller, 700L)
         if (event.eventType !in intArrayOf(
                 AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
@@ -74,7 +94,8 @@ class OfferAccessibilityService : AccessibilityService() {
 
     private fun requestScreenshot() {
         val now = SystemClock.elapsedRealtime()
-        if (screenshotBusy || now - lastScreenshotAt < 1800L) return
+        if (screenshotBusy || now - lastScreenshotAt < 700L) return
+        lastReadStartedAt = now
         lastScreenshotAt = now
         screenshotBusy = true
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
@@ -97,7 +118,7 @@ class OfferAccessibilityService : AccessibilityService() {
                     }
                     recognizer.process(InputImage.fromBitmap(bitmap, 0))
                         .addOnSuccessListener { recognized ->
-                            if (!processOffer(recognized.text, "OCR")) {
+                            if (!processOffer(recognized.textBlocks.flatMap { it.lines }.sortedWith(compareBy({ it.boundingBox?.top ?: Int.MAX_VALUE }, { it.boundingBox?.left ?: 0 })).joinToString("\n") { it.text }, "OCR")) {
                                 diagnostic("99 detectada • dados da oferta não identificados")
                             }
                         }
@@ -155,6 +176,9 @@ class OfferAccessibilityService : AccessibilityService() {
                 "%s %d/100 • R$ %.2f/km • R$ %.2f/h%s",
                 evaluation.verdict, evaluation.score, evaluation.perKm, evaluation.perHour,
                 if (parsed.rating == null) " • nota não lida" else "")
+            getSharedPreferences("accessibility_status", MODE_PRIVATE).edit()
+                .putLong("last_latency_ms", (SystemClock.elapsedRealtime() - lastReadStartedAt).coerceAtLeast(0L))
+                .putString("last_source", source).apply()
             publish("$source: $summary")
             showOverlay(summary, evaluation.verdict)
             Thread {
@@ -243,6 +267,7 @@ class OfferAccessibilityService : AccessibilityService() {
         try { overlay?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
         overlay = null
         mainHandler.removeCallbacks(clearExpired)
+        mainHandler.removeCallbacks(poller)
         recognizer.close()
         super.onDestroy()
     }

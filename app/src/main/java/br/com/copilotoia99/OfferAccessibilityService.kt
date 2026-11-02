@@ -202,7 +202,7 @@ class OfferAccessibilityService : AccessibilityService() {
     private fun processOffer(raw: String, source: String): Boolean {
         val parsed = OfferTextParser.parse(raw)
         if (!parsed.complete) {
-            if (raw.contains("R$", true)) diagnostic("99 detectada • oferta incompleta para avaliação")
+            if (raw.contains("R$", true)) publish("Leitura incompleta: valor=${parsed.price ?: "ausente"}, embarque=${parsed.pickupKm ?: "km?"}/${parsed.pickupMinutes ?: "min?"}, viagem=${parsed.tripKm ?: "km?"}/${parsed.tripMinutes ?: "min?"}")
             return false
         }
         val fingerprint = "${parsed.price}:${parsed.pickupKm}:${parsed.tripKm}:${parsed.pickupMinutes}:${parsed.tripMinutes}:${parsed.rating}"
@@ -216,6 +216,11 @@ class OfferAccessibilityService : AccessibilityService() {
         if (now - pendingAt < 250L) return true
         if (fingerprint == lastFingerprint && now - lastPublishedAt < 8000L) {
             lastOfferConfirmedAt = now
+            if (overlay != null && overlay?.visibility != android.view.View.VISIBLE) {
+                overlay?.visibility = android.view.View.VISIBLE
+            }
+            mainHandler.removeCallbacks(clearExpired)
+            mainHandler.postDelayed(clearExpired, 8000L)
             return true
         }
         lastFingerprint = fingerprint
@@ -259,8 +264,9 @@ class OfferAccessibilityService : AccessibilityService() {
     private fun clearOffer() {
         lastFingerprint = ""
         pendingFingerprint = null
-        // Keep the last evaluated ride visible for its full display window.
-        // A newer confirmed ride replaces it immediately.
+        // Clear the last offer after its display window when the 99 stops presenting it.
+        mainHandler.removeCallbacks(clearExpired)
+        mainHandler.postDelayed(clearExpired, 8000L)
     }
 
     private fun collectText(node: AccessibilityNodeInfo, out: StringBuilder, depth: Int) {
@@ -324,6 +330,7 @@ class OfferAccessibilityService : AccessibilityService() {
             try { windowManager?.addView(view, params); overlay = view }
             catch (e: Exception) { publish("Falha ao abrir janela: ${e.javaClass.simpleName}") }
         }
+        if (overlay == null) return
         overlay?.apply {
             visibility = android.view.View.VISIBLE
             text = message
@@ -334,10 +341,11 @@ class OfferAccessibilityService : AccessibilityService() {
                 else -> 0xE51C2732.toInt()
             })
         }
-        // Every new confirmed ride replaces the previous one and gets five seconds.
-        overlayVisibleUntil = SystemClock.elapsedRealtime() + 5000L
+        publish("Janela automática exibida: $verdict")
+        // Keep the result readable while the offer continues to be detected.
+        overlayVisibleUntil = SystemClock.elapsedRealtime() + 8000L
         mainHandler.removeCallbacks(clearExpired)
-        mainHandler.postDelayed(clearExpired, 5000L)
+        mainHandler.postDelayed(clearExpired, 8000L)
     }
 
     override fun onInterrupt() { publish("Acessibilidade interrompida") }

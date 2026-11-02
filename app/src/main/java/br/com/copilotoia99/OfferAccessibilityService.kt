@@ -1,75 +1,127 @@
 package br.com.copilotoia99
 
 import android.accessibilityservice.AccessibilityService
-import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
+import android.view.Display
 import android.view.Gravity
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import java.util.Locale
 
 /**
- * Reads visible offer text from the 99 driver app through Android Accessibility.
- * It never clicks, accepts, rejects, or otherwise controls ride offers.
+ * Reads 99 offers using accessible nodes, falling back to a single accessibility
+ * screenshot processed locally by ML Kit. No MediaProjection or continuous recording.
+ * Never accepts or rejects rides.
  */
 class OfferAccessibilityService : AccessibilityService() {
+    private val handler = Handler(Looper.getMainLooper())
+    private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private var lastFingerprint = ""
     private var lastPublishedAt = 0L
     private var lastDiagnosticAt = 0L
-    private var lastEventAt = 0L
+    private var lastScreenshotAt = 0L
+    private var screenshotBusy = false
     private var overlay: TextView? = null
     private var windowManager: WindowManager? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        publish("Automação por acessibilidade ativada")
-        showOverlay("Copiloto IA 99 • aguardando oferta")
+        diagnostic("Acessibilidade ativa • aguardando oferta")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        val pkg = event.packageName?.toString()?.lowercase() ?: return
-        if (pkg == packageName) return
-        // Restrict collection to package names plausibly belonging to the 99/Didi app.
+        val pkg = event.packageName?.toString()?.lowercase(Locale.ROOT) ?: return
+        if (pkg == packageName.lowercase(Locale.ROOT)) return
         if (!pkg.contains("99") && !pkg.contains("didi")) return
-        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_VIEW_SCROLLED &&
-            event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED) return
+        if (event.eventType !in intArrayOf(
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+                AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                AccessibilityEvent.TYPE_WINDOWS_CHANGED
+            )) return
 
-        lastEventAt = System.currentTimeMillis()
-        val text = StringBuilder()
+        val out = StringBuilder()
         val roots = mutableListOf<AccessibilityNodeInfo>()
-        rootInActiveWindow?.let { roots.add(it) }
-        event.source?.let { roots.add(it) }
+        rootInActiveWindow?.let(roots::add)
+        event.source?.let(roots::add)
         try {
-            windows?.forEach { window -> window.root?.let { roots.add(it) } }
-            for (root in roots) collectText(root, text, 0)
+            windows?.forEach { it.root?.let(roots::add) }
+            roots.forEach { collectText(it, out, 0) }
         } finally {
             roots.forEach { try { it.recycle() } catch (_: Exception) {} }
         }
-        val raw = text.toString().trim()
-        if (raw.isBlank()) {
-            diagnostic("99 detectada, mas sem texto acessível; confira permissões e versão da 99")
-            return
-        }
+        val raw = out.toString()
+        if (raw.isNotBlank() && processOffer(raw, "acessibilidade")) return
+        requestScreenshot()
+    }
 
-        val parsed = OfferTextParser.parse(raw)
-        if (!parsed.complete) {
-            val amounts = Regex("""R\\$\\s*[0-9]+(?:[.,][0-9]{2})?""").findAll(raw).count()
-            diagnostic("Tela 99 lida • ${raw.length} caracteres • ${amounts} valores • dados insuficientes para avaliar")
+    private fun requestScreenshot() {
+        val now = SystemClock.elapsedRealtime()
+        if (screenshotBusy || now - lastScreenshotAt < 1800L) return
+        lastScreenshotAt = now
+        screenshotBusy = true
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            screenshotBusy = false
+            diagnostic("Captura por acessibilidade indisponível neste Android")
             return
         }
+        try {
+            takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+                override fun onSuccess(result: ScreenshotResult) {
+                    val buffer = result.hardwareBuffer
+                    val bitmap = try {
+                        Bitmap.wrapHardwareBuffer(buffer, result.colorSpace)?.copy(Bitmap.Config.ARGB_8888, false)
+                    } catch (_: Exception) { null }
+                    finally { buffer.close() }
+                    if (bitmap == null) {
+                        screenshotBusy = false
+                        diagnostic("Falha ao converter imagem da oferta")
+                        return
+                    }
+                    recognizer.process(InputImage.fromBitmap(bitmap, 0))
+                        .addOnSuccessListener { recognized ->
+                            if (!processOffer(recognized.text, "OCR")) {
+                                diagnostic("99 detectada • dados da oferta não identificados")
+                            }
+                        }
+                        .addOnFailureListener { diagnostic("OCR não conseguiu ler a oferta") }
+                        .addOnCompleteListener {
+                            bitmap.recycle()
+                            screenshotBusy = false
+                        }
+                }
+                override fun onFailure(errorCode: Int) {
+                    screenshotBusy = false
+                    diagnostic("Captura de acessibilidade indisponível (código $errorCode)")
+                }
+            })
+        } catch (_: Exception) {
+            screenshotBusy = false
+            diagnostic("Não foi possível capturar a oferta")
+        }
+    }
+
+    private fun processOffer(raw: String, source: String): Boolean {
+        val parsed = OfferTextParser.parse(raw)
+        if (!parsed.complete) return false
         val fingerprint = "${parsed.price}:${parsed.pickupKm}:${parsed.tripKm}:${parsed.pickupMinutes}:${parsed.tripMinutes}"
-        val now = System.currentTimeMillis()
-        if (fingerprint == lastFingerprint && now - lastPublishedAt < 8000) return
-        if (now - lastPublishedAt < 1200) return
+        val now = SystemClock.elapsedRealtime()
+        if (fingerprint == lastFingerprint && now - lastPublishedAt < 8000L) return true
         lastFingerprint = fingerprint
         lastPublishedAt = now
-
         val offer = OfferInput(
             parsed.price!!, parsed.pickupKm!!, parsed.tripKm!!,
             parsed.pickupMinutes!!, parsed.tripMinutes!!,
@@ -84,46 +136,47 @@ class OfferAccessibilityService : AccessibilityService() {
             prefs.getFloat("pickupKm", 8f).toDouble(),
             prefs.getFloat("pickupMin", 15f).toDouble()
         )
-        val evaluation = OfferEvaluator.evaluate(offer, limits)
-        val summary = "${evaluation.verdict} ${evaluation.score}/100 • R$ %.2f/km • R$ %.2f/h".format(
-            java.util.Locale("pt", "BR"), evaluation.perKm, evaluation.perHour
-        )
-        publish(summary)
-        showOverlay(summary)
-        Thread {
-            try { OfferStore(applicationContext).use { it.add(offer, evaluation) } } catch (_: Exception) {}
-        }.start()
-        EvolutionRecorder.recordAsync(this, "accessibility_offer_detected")
+        try {
+            val evaluation = OfferEvaluator.evaluate(offer, limits)
+            val summary = String.format(Locale("pt", "BR"),
+                "%s %d/100 • R$ %.2f/km • R$ %.2f/h%s",
+                evaluation.verdict, evaluation.score, evaluation.perKm, evaluation.perHour,
+                if (parsed.rating == null) " • nota não lida" else "")
+            publish("$source: $summary")
+            showOverlay(summary)
+            Thread {
+                try { OfferStore(applicationContext).use { it.add(offer, evaluation) } }
+                catch (_: Exception) {}
+            }.start()
+            EvolutionRecorder.recordAsync(this, "accessibility_offer_detected")
+        } catch (_: Exception) { diagnostic("Oferta lida, mas avaliação falhou") }
+        return true
     }
 
     private fun collectText(node: AccessibilityNodeInfo, out: StringBuilder, depth: Int) {
         if (depth > 22 || out.length > 5000) return
-        node.text?.toString()?.takeIf { it.isNotBlank() }?.let {
-            if (out.isNotEmpty()) out.append('\n')
-            out.append(it)
-        }
-        node.contentDescription?.toString()?.takeIf { it.isNotBlank() }?.let {
-            if (out.isNotEmpty()) out.append('\n')
-            out.append(it)
-        }
+        node.text?.toString()?.takeIf { it.isNotBlank() }?.let { out.append(it).append('\n') }
+        node.contentDescription?.toString()?.takeIf { it.isNotBlank() }?.let { out.append(it).append('\n') }
         for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            collectText(child, out, depth + 1)
-            child.recycle()
+            node.getChild(i)?.let { child ->
+                try { collectText(child, out, depth + 1) }
+                finally { child.recycle() }
+            }
         }
     }
 
     private fun diagnostic(message: String) {
-        val now = System.currentTimeMillis()
-        if (now - lastDiagnosticAt < 5000) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastDiagnosticAt < 5000L) return
         lastDiagnosticAt = now
         publish(message)
-        showOverlay("Copiloto IA 99 • " + message)
+        showOverlay("Copiloto IA 99 • $message")
     }
 
     private fun publish(message: String) {
-        EvolutionRecorder.recordAsync(this, "accessibility_status")
-        getSharedPreferences("accessibility_status", MODE_PRIVATE).edit().putString("last_status", message).putLong("updated_at", System.currentTimeMillis()).apply()
+        getSharedPreferences("accessibility_status", MODE_PRIVATE).edit()
+            .putString("last_status", message)
+            .putLong("updated_at", System.currentTimeMillis()).apply()
     }
 
     private fun showOverlay(message: String) {
@@ -135,7 +188,7 @@ class OfferAccessibilityService : AccessibilityService() {
                 setBackgroundColor(0xE51C2732.toInt())
                 textSize = 14f
                 setPadding(18, 12, 18, 12)
-                maxLines = 2
+                maxLines = 3
             }
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
@@ -149,21 +202,18 @@ class OfferAccessibilityService : AccessibilityService() {
                 gravity = Gravity.TOP
                 y = (resources.displayMetrics.density * 38).toInt()
             }
-            try {
-                windowManager?.addView(view, params)
-                overlay = view
-            } catch (_: Exception) {}
+            try { windowManager?.addView(view, params); overlay = view }
+            catch (_: Exception) {}
         }
         overlay?.text = message
     }
 
-    override fun onInterrupt() {
-        publish("Automação interrompida pelo Android")
-    }
+    override fun onInterrupt() { publish("Acessibilidade interrompida") }
 
     override fun onDestroy() {
         try { overlay?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
         overlay = null
+        recognizer.close()
         super.onDestroy()
     }
 }

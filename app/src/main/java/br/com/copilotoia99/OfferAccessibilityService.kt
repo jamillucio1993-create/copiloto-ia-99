@@ -34,6 +34,7 @@ class OfferAccessibilityService : AccessibilityService() {
         override fun run() {
             val root = rootInActiveWindow
             if (root != null) {
+                lastReadStartedAt = SystemClock.elapsedRealtime()
                 val pkg = root.packageName?.toString()?.lowercase(Locale.ROOT) ?: ""
                 val out = StringBuilder()
                 try { collectText(root, out, 0) } finally { root.recycle() }
@@ -83,6 +84,7 @@ class OfferAccessibilityService : AccessibilityService() {
                 AccessibilityEvent.TYPE_WINDOWS_CHANGED
             )) return
 
+        lastReadStartedAt = SystemClock.elapsedRealtime()
         val out = StringBuilder()
         val root = rootInActiveWindow
         if (root != null) {
@@ -158,7 +160,17 @@ class OfferAccessibilityService : AccessibilityService() {
                 !it.text.contains("por embarque", true) && !it.text.contains("por km", true)
         }
         if (fares.isEmpty()) return emptyList()
+        // A single fare can still be accompanied by unrelated prices or a
+        // partially visible card. The parser must validate the full card.
         if (fares.size == 1) return listOf(lines.joinToString("\n") { it.text })
+        // Cards in the same row cannot safely be split by Y coordinate.
+        // Refuse to mix their fare, pickup and trip fields.
+        val overlappingRows = fares.zipWithNext().any { (a, b) ->
+            val first = a.boundingBox!!
+            val second = b.boundingBox!!
+            first.top < second.bottom && second.top < first.bottom
+        }
+        if (overlappingRows) return emptyList()
         val centers = fares.map { it.boundingBox!!.centerY() }.sorted()
         val boundaries = centers.zipWithNext { a, b -> (a + b) / 2 }
         val groups = MutableList(centers.size) { mutableListOf<Text.Line>() }

@@ -521,7 +521,7 @@ class MainActivity : Activity() {
         val now = System.currentTimeMillis()
         if (now - updatePrefs.getLong("last_check", 0L) > 24L * 60L * 60L * 1000L) {
             updatePrefs.edit().putLong("last_check", now).apply()
-            checkForUpdates()
+            checkForUpdates(silent = true)
         }
     }
     private fun dailyGoalStatus(): String {
@@ -546,8 +546,8 @@ class MainActivity : Activity() {
         scroll.post { scroll.smoothScrollTo(0,0) }
     }
 
-    private fun checkForUpdates() {
-        Toast.makeText(this, "Verificando atualizações...", Toast.LENGTH_SHORT).show()
+    private fun checkForUpdates(silent: Boolean = false) {
+        if (!silent) Toast.makeText(this, "Verificando atualizações...", Toast.LENGTH_SHORT).show()
         Thread {
             try {
                 val connection = (java.net.URL("https://api.github.com/repos/jamillucio1993-create/copiloto-ia-99/releases/latest").openConnection() as java.net.HttpURLConnection)
@@ -561,6 +561,7 @@ class MainActivity : Activity() {
                 } finally { connection.disconnect() }
                 runOnUiThread {
                     if (response == null) {
+                        if (silent) return@runOnUiThread
                         android.app.AlertDialog.Builder(this)
                             .setTitle("Atualizações")
                             .setMessage("Nenhuma versão publicada disponível agora. Verifique a página oficial de Releases.")
@@ -589,6 +590,7 @@ class MainActivity : Activity() {
                             ?: "https://github.com/jamillucio1993-create/copiloto-ia-99/releases"
                         val message = if (newer) "Nova versão disponível: $tag\nInstalada: $current\n\nO Android solicitará sua confirmação para instalar."
                             else "Versão instalada: $current\nÚltima publicada: $tag\n\nNenhuma atualização mais recente foi identificada."
+                        if (silent && !newer) return@runOnUiThread
                         val dialog = android.app.AlertDialog.Builder(this)
                             .setTitle("Atualização do Copiloto IA 99")
                             .setMessage(message)
@@ -603,6 +605,7 @@ class MainActivity : Activity() {
                 }
             } catch (_: Exception) {
                 runOnUiThread {
+                    if (silent) return@runOnUiThread
                     android.app.AlertDialog.Builder(this)
                         .setTitle("Atualizações")
                         .setMessage("Não foi possível consultar o GitHub. Verifique a internet e tente novamente.")

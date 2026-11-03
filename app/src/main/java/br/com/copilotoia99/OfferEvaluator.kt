@@ -14,7 +14,9 @@ data class OfferInput(
     val price: Double, val pickupKm: Double, val tripKm: Double,
     val pickupMinutes: Double, val tripMinutes: Double, val rating: Double,
     val region: String, val estimatedWaitMinutes: Double? = null,
-    val verifiedTripCosts: Double? = null
+    val verifiedTripCosts: Double? = null,
+    val fuelKmPerLiter: Double = 8.0,
+    val fuelPricePerLiter: Double = 3.60
 )
 data class Evaluation(
     val perKm: Double, val perHour: Double, val score: Int, val verdict: String,
@@ -50,6 +52,9 @@ object OfferEvaluator {
         }
         val destinationScore = wait?.let { (100.0 - it * 2.0).roundToInt().coerceIn(0,100) }
         val ratingRatio = if (input.rating > 0.0) input.rating / 5.0 else 0.5
+        // Rental-car mode: fuel-only estimate until rental cost is configured.
+        // Never present this estimate as verified net profit.
+        val fuelEstimate = if (input.fuelKmPerLiter > 0.0 && input.fuelPricePerLiter >= 0.0) totalKm / input.fuelKmPerLiter * input.fuelPricePerLiter else null
         val costs = input.verifiedTripCosts?.takeIf { it >= 0.0 && it.isFinite() }
         val financialScore = if (costs != null) {
             val netPerHour = (input.price - costs) * 60.0 / totalMin

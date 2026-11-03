@@ -4,7 +4,7 @@ import kotlin.math.roundToInt
 
 data class DriverLimits(
     val minPerKm: Double = 1.80,
-    val minPerHour: Double = 35.0,
+    val minPerHour: Double = 60.0,
     val minFare: Double = 10.0,
     val minRating: Double = 4.70,
     val maxPickupKm: Double = 8.0,
@@ -43,7 +43,7 @@ object OfferEvaluator {
             else -> "BAIXA (destino desconhecido)"
         }
         val destinationScore = wait?.let { (100.0 - it * 2.0).roundToInt().coerceIn(0,100) }
-        val financialScore = ((perKm / 3.0 * 50.0) + (perHour / 75.0 * 50.0)).roundToInt().coerceIn(0,100)
+        val financialScore = ((perKm / 3.0 * 30.0) + (perHour / 75.0 * 70.0)).roundToInt().coerceIn(0,100)
         val weight = when {
             history != null && history.samples >= 12 -> 0.20
             history != null && history.samples >= 4 -> 0.10
@@ -51,7 +51,7 @@ object OfferEvaluator {
             else -> 0.0
         }
         val score = (financialScore * (1.0-weight) + (destinationScore ?: financialScore)*weight).roundToInt().coerceIn(0,100)
-        val verdict = if (violations.isNotEmpty()) "RUIM" else when {
+        val verdict = if (perHour < 60.0 || violations.isNotEmpty()) "RUIM" else when {
             score >= 85 -> "EXCELENTE"
             score >= 65 -> "BOA"
             score >= 45 -> "REGULAR"

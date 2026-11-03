@@ -13,7 +13,8 @@ data class DriverLimits(
 data class OfferInput(
     val price: Double, val pickupKm: Double, val tripKm: Double,
     val pickupMinutes: Double, val tripMinutes: Double, val rating: Double,
-    val region: String, val estimatedWaitMinutes: Double? = null
+    val region: String, val estimatedWaitMinutes: Double? = null,
+    val verifiedTripCosts: Double? = null
 )
 data class Evaluation(
     val perKm: Double, val perHour: Double, val score: Int, val verdict: String,
@@ -21,6 +22,11 @@ data class Evaluation(
     val estimatedWaitMinutes: Double?, val projectedPerHourWithWait: Double?
 )
 object OfferEvaluator {
+    // Future net-profit scoring activates only with a verified trip cost.
+    const val GROSS_HOURLY_WEIGHT = 0.40
+    const val NET_HOURLY_WEIGHT = 0.30
+    const val PER_KM_WEIGHT = 0.25
+    const val PASSENGER_RATING_WEIGHT = 0.05
     fun evaluate(input: OfferInput, limits: DriverLimits = DriverLimits(), history: RegionLearning? = null): Evaluation {
         require(input.price > 0 && input.pickupKm >= 0 && input.tripKm > 0 && input.pickupMinutes >= 0 && input.tripMinutes > 0 && input.rating in 0.0..5.0)
         val totalKm = input.pickupKm + input.tripKm
@@ -43,7 +49,18 @@ object OfferEvaluator {
             else -> "BAIXA (destino desconhecido)"
         }
         val destinationScore = wait?.let { (100.0 - it * 2.0).roundToInt().coerceIn(0,100) }
-        val financialScore = ((perKm / 3.0 * 25.0) + (perHour / 75.0 * 65.0) + (if (input.rating > 0.0) input.rating / 5.0 * 10.0 else 5.0)).roundToInt().coerceIn(0,100)
+        val ratingRatio = if (input.rating > 0.0) input.rating / 5.0 else 0.5
+        val costs = input.verifiedTripCosts?.takeIf { it >= 0.0 && it.isFinite() }
+        val financialScore = if (costs != null) {
+            val netPerHour = (input.price - costs) * 60.0 / totalMin
+            ((perHour / 75.0 * GROSS_HOURLY_WEIGHT +
+                netPerHour.coerceAtLeast(0.0) / 75.0 * NET_HOURLY_WEIGHT +
+                perKm / 3.0 * PER_KM_WEIGHT +
+                ratingRatio * PASSENGER_RATING_WEIGHT) * 100.0).roundToInt().coerceIn(0,100)
+        } else {
+            // Keep the current 65/25/10 scoring until actual trip costs are available.
+            ((perKm / 3.0 * 25.0) + (perHour / 75.0 * 65.0) + ratingRatio * 10.0).roundToInt().coerceIn(0,100)
+        }
         val weight = when {
             history != null && history.samples >= 12 -> 0.20
             history != null && history.samples >= 4 -> 0.10

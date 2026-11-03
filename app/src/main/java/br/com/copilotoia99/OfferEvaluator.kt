@@ -43,7 +43,7 @@ object OfferEvaluator {
             else -> "BAIXA (destino desconhecido)"
         }
         val destinationScore = wait?.let { (100.0 - it * 2.0).roundToInt().coerceIn(0,100) }
-        val financialScore = ((perKm / 3.0 * 30.0) + (perHour / 75.0 * 70.0)).roundToInt().coerceIn(0,100)
+        val financialScore = ((perKm / 3.0 * 25.0) + (perHour / 75.0 * 65.0) + (if (input.rating > 0.0) input.rating / 5.0 * 10.0 else 5.0)).roundToInt().coerceIn(0,100)
         val weight = when {
             history != null && history.samples >= 12 -> 0.20
             history != null && history.samples >= 4 -> 0.10

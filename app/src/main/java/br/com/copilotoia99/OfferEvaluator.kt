@@ -25,6 +25,8 @@ data class Evaluation(
 )
 object OfferEvaluator {
     // Future net-profit scoring activates only with a verified trip cost.
+    const val DEFAULT_FUEL_KM_PER_LITER = 8.0
+    const val DEFAULT_FUEL_PRICE_PER_LITER = 3.60
     const val GROSS_HOURLY_WEIGHT = 0.40
     const val NET_HOURLY_WEIGHT = 0.30
     const val PER_KM_WEIGHT = 0.25
@@ -55,7 +57,10 @@ object OfferEvaluator {
         // Rental-car mode: fuel-only estimate until rental cost is configured.
         // Never present this estimate as verified net profit.
         val fuelEstimate = if (input.fuelKmPerLiter > 0.0 && input.fuelPricePerLiter >= 0.0) totalKm / input.fuelKmPerLiter * input.fuelPricePerLiter else null
+        // Rental-car mode: fuel-only estimate until the rental fee and other costs are configured.
+        val estimatedFuelCost = totalKm / DEFAULT_FUEL_KM_PER_LITER * DEFAULT_FUEL_PRICE_PER_LITER
         val costs = input.verifiedTripCosts?.takeIf { it >= 0.0 && it.isFinite() }
+        val operationalCosts = costs ?: estimatedFuelCost
         val financialScore = if (costs != null) {
             val netPerHour = (input.price - costs) * 60.0 / totalMin
             ((perHour / 75.0 * GROSS_HOURLY_WEIGHT +
@@ -79,8 +84,9 @@ object OfferEvaluator {
             score >= 45 -> "REGULAR"
             else -> "RUIM"
         }
-        val reason = if (violations.isNotEmpty()) "Limite obrigatório violado: ${violations.joinToString()}." else
-            "Rentabilidade calculada com embarque. Destino: ${if (wait == null) "sem dados suficientes" else "espera estimada de %.0f min".format(wait)}."
+        val fuelNote = " Combustível estimado: R$ %.2f (8 km/L; R$ 3,60/L). Lucro operacional estimado: R$ %.2f; aluguel não incluído.".format(estimatedFuelCost, input.price - operationalCosts)
+        val reason = (if (violations.isNotEmpty()) "Limite obrigatório violado: ${violations.joinToString()}." else
+            "Rentabilidade calculada com embarque. Destino: ${if (wait == null) "sem dados suficientes" else "espera estimada de %.0f min".format(wait)}.") + fuelNote
         return Evaluation(perKm, perHour, score, verdict, reason, confidence, destinationScore, wait,
             wait?.let { input.price * 60.0 / (totalMin + it) })
     }

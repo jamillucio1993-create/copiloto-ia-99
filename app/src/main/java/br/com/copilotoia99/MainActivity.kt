@@ -516,6 +516,13 @@ class MainActivity : Activity() {
             button(section,"←  VOLTAR AO INÍCIO") { goHome() }
         }
         refresh()
+        // Check once per day when the driver opens the app, without interrupting every launch.
+        val updatePrefs = getSharedPreferences("update_checks", Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        if (now - updatePrefs.getLong("last_check", 0L) > 24L * 60L * 60L * 1000L) {
+            updatePrefs.edit().putLong("last_check", now).apply()
+            checkForUpdates()
+        }
     }
     private fun dailyGoalStatus(): String {
         val p=getSharedPreferences("daily_copilot",Context.MODE_PRIVATE)

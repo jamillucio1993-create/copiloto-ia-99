@@ -273,13 +273,13 @@ class OfferAccessibilityService : AccessibilityService() {
             prefs.getFloat("km", 1.8f).toDouble(),
             prefs.getFloat("hour", 60f).toDouble(),
             prefs.getFloat("fare", 10f).toDouble(),
-            prefs.getFloat("rating", 4.7f).toDouble(),
+            0.0, // Missing passenger rating must not be treated as a poor rating.
             prefs.getFloat("pickupKm", 8f).toDouble(),
             prefs.getFloat("pickupMin", 15f).toDouble()
         )
         val items = cards.take(3).mapIndexed { index, card ->
             val parsed = OfferTextParser.parse(card)
-            if (!parsed.complete) {
+            if (!OfferReadConfidence.assess(parsed.price, parsed.pickupKm, parsed.tripKm, parsed.pickupMinutes, parsed.tripMinutes).canEvaluate || !parsed.complete) {
                 val fare = parsed.price?.let { String.format(Locale("pt", "BR"), "R$ %.2f", it) } ?: "valor indisponível"
                 Pair("CORRIDA ${index + 1} • $fare\nDados insuficientes para avaliar", 0xE5C58A12.toInt())
             } else {
@@ -420,9 +420,9 @@ class OfferAccessibilityService : AccessibilityService() {
         lastFingerprint = ""
         lastRawFingerprint = ""
         pendingFingerprint = null
-        // Clear the last offer after its display window when the 99 stops presenting it.
+        // Offer has already disappeared: cancel stale expiry callbacks instead of
+        // leaving a delayed callback that could hide the next offer.
         mainHandler.removeCallbacks(clearExpired)
-        mainHandler.postDelayed(clearExpired, 8000L)
     }
 
     private fun collectText(node: AccessibilityNodeInfo, out: StringBuilder, depth: Int) {

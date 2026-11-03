@@ -25,6 +25,7 @@ data class Evaluation(
 )
 object OfferEvaluator {
     // Future net-profit scoring activates only with a verified trip cost.
+    const val DEFAULT_MONTHLY_RENTAL_BRL = 3600.0
     const val DEFAULT_FUEL_KM_PER_LITER = 8.0
     const val DEFAULT_FUEL_PRICE_PER_LITER = 3.60
     const val GROSS_HOURLY_WEIGHT = 0.40
@@ -84,7 +85,7 @@ object OfferEvaluator {
             score >= 45 -> "REGULAR"
             else -> "RUIM"
         }
-        val fuelNote = " Combustível estimado: R$ %.2f (8 km/L; R$ 3,60/L). Lucro operacional estimado: R$ %.2f; aluguel não incluído.".format(estimatedFuelCost, input.price - operationalCosts)
+        val fuelNote = " Combustível estimado: R$ %.2f (8 km/L; R$ 3,60/L). Resultado operacional estimado: R$ %.2f; aluguel mensal R$ 3.600,00 ainda não rateado (faltam horas de trabalho planejadas).".format(estimatedFuelCost, input.price - operationalCosts)
         val reason = (if (violations.isNotEmpty()) "Limite obrigatório violado: ${violations.joinToString()}." else
             "Rentabilidade calculada com embarque. Destino: ${if (wait == null) "sem dados suficientes" else "espera estimada de %.0f min".format(wait)}.") + fuelNote
         return Evaluation(perKm, perHour, score, verdict, reason, confidence, destinationScore, wait,

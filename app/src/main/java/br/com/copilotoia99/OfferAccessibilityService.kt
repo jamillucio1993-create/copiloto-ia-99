@@ -271,7 +271,7 @@ class OfferAccessibilityService : AccessibilityService() {
         val prefs = getSharedPreferences("driver_limits", MODE_PRIVATE)
         val limits = DriverLimits(
             prefs.getFloat("km", 1.8f).toDouble(),
-            prefs.getFloat("hour", 35f).toDouble(),
+            prefs.getFloat("hour", 60f).toDouble(),
             prefs.getFloat("fare", 10f).toDouble(),
             prefs.getFloat("rating", 4.7f).toDouble(),
             prefs.getFloat("pickupKm", 8f).toDouble(),

@@ -351,7 +351,8 @@ class OfferAccessibilityService : AccessibilityService() {
 
     private fun processOffer(raw: String, source: String): Boolean {
         val parsed = OfferTextParser.parse(raw)
-        if (!parsed.complete) {
+        val confidence = OfferReadConfidence.assess(parsed.price, parsed.pickupKm, parsed.tripKm, parsed.pickupMinutes, parsed.tripMinutes)
+        if (!confidence.canEvaluate || !parsed.complete) {
             if (raw.contains("R$", true)) publish("Leitura incompleta: valor=${parsed.price ?: "ausente"}, embarque=${parsed.pickupKm ?: "km?"}/${parsed.pickupMinutes ?: "min?"}, viagem=${parsed.tripKm ?: "km?"}/${parsed.tripMinutes ?: "min?"}")
             return false
         }
